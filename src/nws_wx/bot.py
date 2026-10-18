@@ -8,7 +8,8 @@ import httpx
 
 from .alerts import Alert
 from .contacts import Contact, resolve
-from .weather import WeatherClient, truncate
+from .alerts import MAX_TEXT_BYTES
+from .weather import WeatherClient, compose, truncate
 
 ZIP_RE = re.compile(r"^\d{5}$")
 UNAVAILABLE = "Weather service unavailable, try again later."
@@ -41,11 +42,13 @@ def split_sender(text: str) -> tuple[str, str] | None:
 
 
 class Bot:
-    def __init__(self, weather: WeatherClient, get_contacts, get_alerts, limiter: RateLimiter | None = None):
+    def __init__(self, weather: WeatherClient, get_contacts, get_alerts, limiter: RateLimiter | None = None,
+                 max_bytes: int = MAX_TEXT_BYTES):
         self.weather = weather
         self.get_contacts = get_contacts  # async () -> list[Contact]
         self.get_alerts = get_alerts  # () -> list[Alert] currently matching the filter
         self.limiter = limiter or RateLimiter()
+        self.max_bytes = max_bytes
 
     async def handle(self, text: str) -> str | None:
         """Reply text for a channel message, or None when it isn't a command."""
@@ -84,19 +87,18 @@ class Bot:
                 "ambiguous": "more than one node uses your name",
                 "no_gps": "your node isn't sharing a location",
             }
-            return truncate(f"@{sender} {reasons[status]}. Try: wx <zip>")
+            return truncate(f"@{sender} {reasons[status]}. Try: wx <zip>", self.max_bytes)
         return await self._forecast_reply(sender, contact.lat, contact.lon)
 
     async def _forecast_reply(self, sender: str, lat: float, lon: float) -> str:
-        text = await self.weather.forecast(lat, lon)
-        if text is None:
+        fc = await self.weather.forecast(lat, lon)
+        if fc is None:
             return f"@{sender} No NWS forecast for that location (US only)."
-        return truncate(f"@{sender} {text}")
+        return compose(f"@{sender} {fc.place}: ", fc.parts, self.max_bytes)
 
-    @staticmethod
-    def _alerts_text(alerts: list[Alert]) -> str:
+    def _alerts_text(self, alerts: list[Alert]) -> str:
         if not alerts:
             return "No active alerts for the configured area."
         shown = "; ".join(f"{a.event} ({a.area.split(';')[0]})" for a in alerts[:3])
         more = f" +{len(alerts) - 3} more" if len(alerts) > 3 else ""
-        return truncate(f"Active: {shown}{more}")
+        return truncate(f"Active: {shown}{more}", self.max_bytes)

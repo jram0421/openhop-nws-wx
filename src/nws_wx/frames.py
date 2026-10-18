@@ -33,6 +33,17 @@ APP_VERSION = 3
 TXT_TYPE_PLAIN = 0
 
 
+SELF_INFO_NAME_OFFSET = 58  # code, type, tx, maxtx, pubkey(32), lat, lon, 4 flag bytes, freq, bw, sf, cr
+
+
+def parse_self_name(payload: bytes) -> str:
+    """Our node's advert name from RESP_CODE_SELF_INFO, or '' if it doesn't look right."""
+    if len(payload) <= SELF_INFO_NAME_OFFSET or payload[0] != 5:
+        return ""
+    name = payload[SELF_INFO_NAME_OFFSET:].split(b"\x00", 1)[0].decode("utf-8", "replace")
+    return name if name.isprintable() else ""
+
+
 class FrameError(Exception):
     pass
 
@@ -93,6 +104,7 @@ class FrameClient:
         self.waiting = asyncio.Event()
         self.closed = asyncio.Event()
         self.close_reason = ""
+        self.self_name = ""
         self.last_sent = 0
         self._connected_at = 0.0
         self._replies: asyncio.Queue[bytes] = asyncio.Queue()
@@ -176,7 +188,7 @@ class FrameClient:
 
     async def start(self) -> int:
         """App start + device query. Returns max channels."""
-        await self.request(bytes([CMD_APP_START]) + bytes(7))
+        self.self_name = parse_self_name(await self.request(bytes([CMD_APP_START]) + bytes(7)))
         info = await self.request(bytes([CMD_DEVICE_QUERY, APP_VERSION]))
         if info[0] != RESP_DEVICE_INFO:
             raise FrameError("unexpected device info")

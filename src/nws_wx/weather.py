@@ -1,6 +1,7 @@
 """Forecast lookups: NWS /points -> gridpoint forecast, with caching."""
 
 import time
+from dataclasses import dataclass
 
 import httpx
 
@@ -37,12 +38,39 @@ def truncate(text: str, limit: int = MAX_TEXT_BYTES) -> str:
     return raw[: limit - 3].decode("utf-8", "ignore") + "..."
 
 
-def format_forecast(place: str, periods: list[dict]) -> str:
+DAYS = {"Monday": "Mon", "Tuesday": "Tue", "Wednesday": "Wed", "Thursday": "Thu", "Friday": "Fri",
+        "Saturday": "Sat", "Sunday": "Sun"}
+MAX_PERIODS = 4
+
+
+@dataclass
+class Forecast:
+    place: str
+    parts: list[str]
+
+
+def forecast_parts(periods: list[dict]) -> list[str]:
     parts = []
-    for p in periods[:3]:
-        wind = f", {p['windDirection']} {p['windSpeed']}" if p.get("windSpeed") else ""
-        parts.append(f"{p['name']}: {p['temperature']}{p.get('temperatureUnit', 'F')} {p['shortForecast']}{wind}")
-    return truncate(f"WX {place} | " + " | ".join(parts))
+    for i, p in enumerate(periods[:MAX_PERIODS]):
+        name = p["name"]
+        for full, short in DAYS.items():
+            name = name.replace(full, short)
+        text = f"{name} {p['temperature']}{p.get('temperatureUnit', 'F')} {p['shortForecast']}"
+        if i == 0 and p.get("windSpeed"):
+            text += f", {p['windDirection']} {p['windSpeed']}".replace(" mph", "mph")
+        parts.append(text)
+    return parts
+
+
+def compose(prefix: str, parts: list[str], limit: int = MAX_TEXT_BYTES) -> str:
+    """Add whole periods while they fit; only the first may be cut."""
+    text = prefix + parts[0]
+    for part in parts[1:]:
+        candidate = f"{text} | {part}"
+        if len(candidate.encode("utf-8")) > limit:
+            break
+        text = candidate
+    return truncate(text, limit)
 
 
 class WeatherClient:
@@ -65,8 +93,8 @@ class WeatherClient:
         self._zips.put(zipcode, coords)
         return coords
 
-    async def forecast(self, lat: float, lon: float) -> str | None:
-        """One-line forecast, or None when NWS has no coverage for the point."""
+    async def forecast(self, lat: float, lon: float) -> Forecast | None:
+        """Forecast periods, or None when NWS has no coverage for the point."""
         key = (round(lat, 2), round(lon, 2))
         cached = self._forecasts.get(key)
         if cached:
@@ -87,6 +115,6 @@ class WeatherClient:
         url, place = point
         resp = await self._http.get(url, headers={"Accept": "application/geo+json"})
         resp.raise_for_status()
-        text = format_forecast(place, resp.json()["properties"]["periods"])
-        self._forecasts.put(key, text)
-        return text
+        result = Forecast(place, forecast_parts(resp.json()["properties"]["periods"]))
+        self._forecasts.put(key, result)
+        return result

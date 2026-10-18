@@ -72,6 +72,13 @@ def read_raw(path: Path) -> bytes:
         return b""
 
 
+def message_budget(self_name: str) -> int:
+    """Channel text shares 160 bytes with the 'name: ' prefix the sender's node adds."""
+    if not self_name:
+        return 130  # unknown name: leave room for a long one
+    return max(60, alert_mod.MAX_TEXT_BYTES - len(self_name.encode("utf-8")) - 2)
+
+
 def find_channel(channels: dict[str, int], name: str) -> int | None:
     """Exact name first, then case-insensitive ignoring a leading '#'."""
     if name in channels:
@@ -105,7 +112,7 @@ async def message_loop(client: FrameClient, bot: Bot, wx_idx: int, status: Statu
 
 
 async def alert_loop(client: FrameClient, http: httpx.AsyncClient, cfg: Config, relay: alert_mod.AlertRelay,
-                     alerts_idx: int, active: list, status: Status, seen_path: Path) -> None:
+                     alerts_idx: int, active: list, status: Status, seen_path: Path, budget: int) -> None:
     step = max(cfg.alert_cooldown_seconds + 1, 5)
     while True:
         try:
@@ -121,7 +128,7 @@ async def alert_loop(client: FrameClient, http: httpx.AsyncClient, cfg: Config, 
         deadline = time.monotonic() + cfg.poll_seconds
         while time.monotonic() < deadline:
             for a in relay.select(current):
-                if await client.send_channel(alerts_idx, alert_mod.format_alert(a)):
+                if await client.send_channel(alerts_idx, alert_mod.format_alert(a, budget)):
                     relay.mark_sent(a)
                     save_seen(seen_path, relay.seen)
             await asyncio.sleep(min(step, max(0.0, deadline - time.monotonic())) or 0.1)
@@ -134,7 +141,9 @@ async def run_session(cfg: Config, data_dir: Path, status: Status, seen: set[str
     tasks: list[asyncio.Task] = []
     try:
         channels = await client.channels(await client.start())
-        log.info("connected; channels on the companion: %s", sorted(channels))
+        budget = message_budget(client.self_name)
+        log.info("connected as %r (message budget %d bytes); channels on the companion: %s",
+                 client.self_name, budget, sorted(channels))
         wx_idx = find_channel(channels, cfg.wx_channel) if cfg.bot_enabled else None
         alerts_idx = find_channel(channels, cfg.alerts_channel) if cfg.alerts_enabled else None
         problems = []
@@ -160,14 +169,14 @@ async def run_session(cfg: Config, data_dir: Path, status: Status, seen: set[str
                         cache["items"], cache["at"] = await client.contacts(), time.monotonic()
                     return cache["items"]
 
-                bot = Bot(WeatherClient(http), get_contacts, lambda: list(active))
+                bot = Bot(WeatherClient(http), get_contacts, lambda: list(active), max_bytes=budget)
                 tasks.append(asyncio.create_task(message_loop(client, bot, wx_idx, status)))
             if alerts_idx is not None:
                 flt = alert_mod.AlertFilter(states=cfg.states, same_codes=set(cfg.counties), zones=set(cfg.zones),
                                             min_severity=cfg.min_severity, events=set(cfg.events))
                 relay = alert_mod.AlertRelay(flt, cfg.alert_cooldown_seconds, cfg.alert_hourly_cap, seen=seen)
                 tasks.append(asyncio.create_task(alert_loop(client, http, cfg, relay, alerts_idx, active, status,
-                                                            data_dir / "state.json")))
+                                                            data_dir / "state.json", budget)))
             watchers = [asyncio.create_task(client.closed.wait()),
                         asyncio.create_task(config_changed(data_dir / "config.json", baseline))]
             tasks += watchers

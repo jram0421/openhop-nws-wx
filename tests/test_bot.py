@@ -69,7 +69,7 @@ def test_parse_contact_and_resolve():
 def test_wx_uses_sender_gps():
     b, calls = make_bot([contacts.parse_contact(contact_frame("Bob", 32.78, -96.8))])
     reply = run(b.handle("Bob: wx"))
-    assert reply.startswith("@Bob WX Dallas TX | Today: 78F Sunny, W 10 mph")
+    assert reply == "@Bob Dallas TX: Today 78F Sunny, W 10mph | Tonight 60F Clear"
     assert any("/points/32.7800,-96.8000" in c for c in calls)
 
 
@@ -140,3 +140,40 @@ def test_upstream_failure_reply():
 
     b = bot.Bot(weather.WeatherClient(http), get_contacts, list)
     assert bot.UNAVAILABLE in run(b.handle("Bob: wx 75201"))
+
+
+LONG_PERIODS = PERIODS + [
+    {"name": "Thursday", "temperature": 85, "temperatureUnit": "F", "shortForecast": "Mostly Sunny"},
+    {"name": "Thursday Night", "temperature": 66, "temperatureUnit": "F", "shortForecast": "Slight Chance Showers"},
+]
+
+
+def test_forecast_parts_abbreviate_days_and_keep_wind_to_first():
+    parts = weather.forecast_parts(LONG_PERIODS)
+    assert parts[2] == "Thu 85F Mostly Sunny" and parts[3] == "Thu Night 66F Slight Chance Showers"
+    assert "mph" in parts[0] and "mph" not in parts[1]
+
+
+def test_compose_adds_whole_periods_only():
+    parts = weather.forecast_parts(LONG_PERIODS)
+    full = weather.compose("@Bob Dallas TX: ", parts, 200)
+    assert full.endswith("Thu Night 66F Slight Chance Showers") and "..." not in full
+    tight = weather.compose("@Bob Dallas TX: ", parts, 75)
+    assert tight == "@Bob Dallas TX: Today 78F Sunny, W 10mph | Tonight 60F Clear"
+    assert len(tight.encode()) <= 75
+    assert weather.compose("@Bob Dallas TX: ", parts, 30).endswith("...")  # only the first can be cut
+
+
+def test_message_budget_accounts_for_node_name():
+    from nws_wx import main
+    assert main.message_budget("Base") == 154
+    assert main.message_budget("") == 130
+    assert main.message_budget("x" * 200) == 60
+
+
+def test_parse_self_name():
+    from nws_wx import frames
+    payload = bytes([5]) + bytes(57) + b"Hilltop\x00"
+    assert frames.parse_self_name(payload) == "Hilltop"
+    assert frames.parse_self_name(bytes([5]) + bytes(10)) == ""
+    assert frames.parse_self_name(bytes([5]) + bytes(57) + b"\x01\x02") == ""

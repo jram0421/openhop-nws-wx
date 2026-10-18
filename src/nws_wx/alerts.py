@@ -82,7 +82,7 @@ async def fetch_active(client: httpx.AsyncClient, states: list[str]) -> list[Ale
     return parse_alerts(resp.json())
 
 
-def format_alert(alert: Alert) -> str:
+def format_alert(alert: Alert, limit: int = MAX_TEXT_BYTES) -> str:
     until = ""
     if alert.ends:
         try:
@@ -92,8 +92,8 @@ def format_alert(alert: Alert) -> str:
             pass
     text = f"NWS {alert.event} ({alert.severity}): {alert.area}{until}"
     raw = text.encode("utf-8")
-    if len(raw) > MAX_TEXT_BYTES:
-        text = raw[: MAX_TEXT_BYTES - 3].decode("utf-8", "ignore") + "..."
+    if len(raw) > limit:
+        text = raw[: limit - 3].decode("utf-8", "ignore") + "..."
     return text
 
 
