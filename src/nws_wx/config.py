@@ -30,6 +30,7 @@ DEFAULTS = {
     "poll_seconds": 120,
     "alert_cooldown_seconds": 60,
     "alert_hourly_cap": 10,
+    "urgent_hourly_cap": 30,
     "test_request": 0,
 }
 
@@ -56,6 +57,7 @@ class Config:
     poll_seconds: int = 120
     alert_cooldown_seconds: int = 60
     alert_hourly_cap: int = 10
+    urgent_hourly_cap: int = 30
     test_request: int = 0  # set by the config page; a new value posts one test message
 
     @property
@@ -120,6 +122,7 @@ def parse_config(raw: object) -> Config:
         poll_seconds=_int(raw, "poll_seconds", 60, 3600, errors),
         alert_cooldown_seconds=_int(raw, "alert_cooldown_seconds", 0, 3600, errors),
         alert_hourly_cap=_int(raw, "alert_hourly_cap", 1, 60, errors),
+        urgent_hourly_cap=_int(raw, "urgent_hourly_cap", 1, 120, errors),
         test_request=_int(raw, "test_request", 0, 2**53, errors),
     )
     if cfg.alerts_enabled and not cfg.states:

@@ -241,7 +241,8 @@ async def run_session(cfg: Config, data_dir: Path, status: Status, seen: set[str
             if alerts_idx is not None:
                 flt = alert_mod.AlertFilter(states=cfg.states, same_codes=set(cfg.counties), zones=set(cfg.zones),
                                             min_severity=cfg.min_severity, events=set(cfg.events))
-                relay = alert_mod.AlertRelay(flt, cfg.alert_cooldown_seconds, cfg.alert_hourly_cap, seen=seen)
+                relay = alert_mod.AlertRelay(flt, cfg.alert_cooldown_seconds, cfg.alert_hourly_cap, seen=seen,
+                                           urgent_hourly_cap=cfg.urgent_hourly_cap)
                 tasks.append(asyncio.create_task(alert_loop(client, http, cfg, relay, alerts_idx, active, status,
                                                             data_dir / "state.json", budget)))
             watchers = [asyncio.create_task(client.closed.wait()),

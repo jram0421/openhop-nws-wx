@@ -58,7 +58,7 @@ def test_filter_matches_zone_codes():
 def test_relay_cooldown_cap_and_dedupe():
     t = [0.0]
     flt = alerts.AlertFilter(min_severity="Minor")
-    relay = alerts.AlertRelay(flt, cooldown_s=60, hourly_cap=2, clock=lambda: t[0])
+    relay = alerts.AlertRelay(flt, cooldown_s=60, hourly_cap=1, clock=lambda: t[0])
     parsed = alerts.parse_alerts(DOC)
 
     first = relay.select(parsed)
@@ -72,7 +72,7 @@ def test_relay_cooldown_cap_and_dedupe():
     relay.mark_sent(second[0])
 
     t[0] = 200
-    assert relay.select(parsed) == []  # hourly cap hit
+    assert relay.select(parsed) == []  # normal hourly cap (1) hit; a1 was urgent and counted separately
     t[0] = 3700
     assert [a.id for a in relay.select(parsed)] == ["a2"]
 
@@ -113,12 +113,51 @@ def test_cooldown_still_applies_below_severe():
     assert relay.select([_mk("b", "Moderate"), _mk("c", "Minor")]) == []
 
 
-def test_hourly_cap_still_limits_urgent_alerts():
+def test_urgent_alerts_have_their_own_hourly_cap():
     t = [0.0]
-    relay = alerts.AlertRelay(alerts.AlertFilter(min_severity="Minor"), cooldown_s=300, hourly_cap=2, clock=lambda: t[0])
-    relay.mark_sent(_mk("x", "Minor"))
-    batch = [_mk("e1", "Extreme"), _mk("e2", "Extreme"), _mk("e3", "Extreme")]
+    relay = alerts.AlertRelay(alerts.AlertFilter(min_severity="Minor"), cooldown_s=300, hourly_cap=2,
+                              urgent_hourly_cap=3, clock=lambda: t[0])
+    relay.mark_sent(_mk("n1", "Minor"))
+    t[0] = 400
+    relay.mark_sent(_mk("n2", "Moderate"))  # normal budget (2) now spent
+    t[0] = 800
+    batch = [_mk(f"u{i}", "Extreme") for i in range(5)]
     got = relay.select(batch)
-    assert [a.id for a in got] == ["e1"]  # one slot left this hour
-    relay.mark_sent(got[0])
-    assert relay.select(batch[1:]) == []
+    assert [a.id for a in got] == ["u0", "u1", "u2"]  # urgent room is 3, unaffected by normal sends
+    for a in got:
+        relay.mark_sent(a)
+    assert relay.select(batch[3:]) == []  # urgent budget spent
+    assert relay.select([_mk("n3", "Moderate")]) == []  # normal budget still spent too
+    t[0] = 800 + 3600
+    assert [a.id for a in relay.select(batch[3:])] == ["u3", "u4"]
+
+
+def test_urgent_burst_does_not_use_the_normal_budget():
+    t = [0.0]
+    relay = alerts.AlertRelay(alerts.AlertFilter(min_severity="Minor"), cooldown_s=60, hourly_cap=2,
+                              urgent_hourly_cap=10, clock=lambda: t[0])
+    for i in range(5):
+        relay.mark_sent(_mk(f"t{i}", "Severe"))
+    t[0] = 100  # cooldown over
+    assert [a.id for a in relay.select([_mk("w", "Moderate")])] == ["w"]  # normal budget untouched
+
+
+def test_normal_alerts_proceed_when_urgent_budget_is_spent():
+    t = [0.0]
+    relay = alerts.AlertRelay(alerts.AlertFilter(min_severity="Minor"), cooldown_s=60, hourly_cap=5,
+                              urgent_hourly_cap=1, clock=lambda: t[0])
+    relay.mark_sent(_mk("t0", "Extreme"))
+    t[0] = 100
+    mixed = [_mk("t1", "Extreme"), _mk("w", "Moderate")]
+    assert [a.id for a in relay.select(mixed)] == ["w"]  # Extreme is capped, Moderate still goes
+
+
+def test_urgent_cap_config():
+    from nws_wx import config
+    base = {"contact_email": "a@b.co", "states": ["TX"]}
+    assert config.parse_config(base).urgent_hourly_cap == 30
+    assert config.parse_config({**base, "urgent_hourly_cap": 50}).urgent_hourly_cap == 50
+    import pytest
+    for bad in (0, 500, "x", True):
+        with pytest.raises(config.ConfigError):
+            config.parse_config({**base, "urgent_hourly_cap": bad})

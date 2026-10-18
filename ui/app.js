@@ -14,7 +14,7 @@
     contact_email: "", frame_host: "127.0.0.1", frame_port: 5000,
     wx_channel: "WX", alerts_channel: "WX-Alerts", bot_enabled: true, alerts_enabled: true, wx_alerts_followup: true,
     states: [], counties: [], zones: [], min_severity: "Moderate", events: [],
-    poll_seconds: 120, alert_cooldown_seconds: 60, alert_hourly_cap: 10
+    poll_seconds: 120, alert_cooldown_seconds: 60, alert_hourly_cap: 10, urgent_hourly_cap: 30
   };
 
   var $ = function (id) { return document.getElementById(id); };
@@ -97,7 +97,7 @@
     var c = Object.assign({}, DEFAULTS, cfg);
     loaded = Object.assign({}, cfg);
     ["contact_email", "frame_host", "frame_port", "wx_channel", "alerts_channel", "min_severity",
-     "poll_seconds", "alert_cooldown_seconds", "alert_hourly_cap"].forEach(function (k) { $(k).value = c[k]; });
+     "poll_seconds", "alert_cooldown_seconds", "alert_hourly_cap", "urgent_hourly_cap"].forEach(function (k) { $(k).value = c[k]; });
     $("bot_enabled").checked = c.bot_enabled !== false;
     $("alerts_enabled").checked = c.alerts_enabled !== false;
     $("wx_alerts_followup").checked = c.wx_alerts_followup !== false;
@@ -124,7 +124,8 @@
     }
     var nums = {
       frame_port: num("frame_port", 1, 65535), poll_seconds: num("poll_seconds", 60, 3600),
-      alert_cooldown_seconds: num("alert_cooldown_seconds", 0, 3600), alert_hourly_cap: num("alert_hourly_cap", 1, 60)
+      alert_cooldown_seconds: num("alert_cooldown_seconds", 0, 3600), alert_hourly_cap: num("alert_hourly_cap", 1, 60),
+      urgent_hourly_cap: num("urgent_hourly_cap", 1, 120)
     };
     var badNum = Object.keys(nums).filter(function (k) { return nums[k] === null; });
     ok = setError("err_numbers", badNum.length ? "Check the number fields: " + badNum.join(", ") : "") && ok;

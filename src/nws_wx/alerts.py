@@ -102,42 +102,56 @@ def format_alert(alert: Alert, limit: int = MAX_TEXT_BYTES) -> str:
 
 
 class AlertRelay:
-    """Dedupes by alert ID, then enforces a cooldown and an hourly cap.
+    """Dedupes by alert ID, then enforces a cooldown and hourly caps.
+
+    Severe and Extreme alerts skip the cooldown and have their own, higher hourly cap, so a burst of
+    them can neither be held up by nor use up the budget for everything else.
 
     An alert is only marked seen once it is actually sent, so alerts held
     back by the limits are retried on later polls while still active.
     """
 
     def __init__(self, flt: AlertFilter, cooldown_s: float = 60.0, hourly_cap: int = 10, clock=time.monotonic,
-                 seen: set[str] | None = None):
+                 seen: set[str] | None = None, urgent_hourly_cap: int = 30):
         self.filter = flt
         self.cooldown_s = cooldown_s
         self.hourly_cap = hourly_cap
+        self.urgent_hourly_cap = urgent_hourly_cap
         self._clock = clock
         self._seen: set[str] = set(seen or ())
-        self._sent_at: deque[float] = deque()
+        self._sent_at: deque[float] = deque()  # every send; drives the cooldown
+        self._normal_at: deque[float] = deque()
+        self._urgent_at: deque[float] = deque()
+
+    def _trim(self, now: float) -> None:
+        for sent in (self._sent_at, self._normal_at, self._urgent_at):
+            while sent and now - sent[0] >= 3600:
+                sent.popleft()
 
     def select(self, alerts: list[Alert]) -> list[Alert]:
         """Alerts to post now, most severe first. Call mark_sent() per success.
 
-        Severe and Extreme alerts skip the cooldown. Anything else waits out the cooldown and goes
-        one at a time. The hourly cap applies to everything.
+        Severe and Extreme alerts go out right away, up to the urgent cap. Anything else waits out
+        the cooldown and goes one at a time, up to the normal cap.
         """
         now = self._clock()
-        while self._sent_at and now - self._sent_at[0] >= 3600:
-            self._sent_at.popleft()
+        self._trim(now)
         in_cooldown = bool(self._sent_at) and now - self._sent_at[-1] < self.cooldown_s
         fresh = [a for a in alerts if a.id not in self._seen and self.filter.matches(a)]
         fresh.sort(key=lambda a: -_sev(a.severity))
-        room = max(0, self.hourly_cap - len(self._sent_at))
         urgent = [a for a in fresh if _sev(a.severity) >= URGENT_RANK]
-        if urgent:
-            return urgent[:room]
-        return [] if in_cooldown else fresh[: min(room, 1)]
+        urgent_room = max(0, self.urgent_hourly_cap - len(self._urgent_at))
+        if urgent and urgent_room:
+            return urgent[:urgent_room]
+        normal = [a for a in fresh if _sev(a.severity) < URGENT_RANK]
+        normal_room = max(0, self.hourly_cap - len(self._normal_at))
+        return [] if in_cooldown else normal[: min(normal_room, 1)]
 
     def mark_sent(self, alert: Alert) -> None:
         self._seen.add(alert.id)
-        self._sent_at.append(self._clock())
+        now = self._clock()
+        self._sent_at.append(now)
+        (self._urgent_at if _sev(alert.severity) >= URGENT_RANK else self._normal_at).append(now)
 
     @property
     def seen(self) -> set[str]:
