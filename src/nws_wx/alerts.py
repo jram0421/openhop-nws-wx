@@ -104,12 +104,13 @@ class AlertRelay:
     back by the limits are retried on later polls while still active.
     """
 
-    def __init__(self, flt: AlertFilter, cooldown_s: float = 60.0, hourly_cap: int = 10, clock=time.monotonic):
+    def __init__(self, flt: AlertFilter, cooldown_s: float = 60.0, hourly_cap: int = 10, clock=time.monotonic,
+                 seen: set[str] | None = None):
         self.filter = flt
         self.cooldown_s = cooldown_s
         self.hourly_cap = hourly_cap
         self._clock = clock
-        self._seen: set[str] = set()
+        self._seen: set[str] = set(seen or ())
         self._sent_at: deque[float] = deque()
 
     def select(self, alerts: list[Alert]) -> list[Alert]:
@@ -127,6 +128,10 @@ class AlertRelay:
     def mark_sent(self, alert: Alert) -> None:
         self._seen.add(alert.id)
         self._sent_at.append(self._clock())
+
+    @property
+    def seen(self) -> set[str]:
+        return set(self._seen)
 
     def prune(self, active_ids: set[str]) -> None:
         """Forget IDs no longer active so the set stays bounded."""
