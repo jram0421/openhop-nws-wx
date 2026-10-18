@@ -23,7 +23,7 @@ Replies mention the sender as `@[name]`. Each sender is limited to one command e
 ## Requirements
 
 - An OpenHop Repeater with the plugin manager.
-- A Companion frame server the plugin can reach, with two channels created on that Companion: a bot channel (default `WX`) and an alerts channel (default `WX-Alerts`). Names are matched ignoring case and a leading `#`.
+- A Companion frame server the plugin can reach, with two channels created on that Companion: a bot channel (default `#wx`) and an alerts channel (default `#wx-alerts`). Names are matched ignoring case and a leading `#`.
 - Python 3.11+ on the Repeater host. The plugin gets its own virtualenv.
 - An email address, sent to NWS in the `User-Agent` header as they ask of API users.
 
@@ -43,7 +43,7 @@ The config page edits the plugin's `config.json`. Fields:
 |---|---|---|
 | `contact_email` | none | Required. Used in the NWS `User-Agent`. The plugin does not contact NWS until it is valid |
 | `frame_host`, `frame_port` | `127.0.0.1`, `5000` | The Companion frame server |
-| `wx_channel`, `alerts_channel` | `WX`, `WX-Alerts` | Channel names on the Companion |
+| `wx_channel`, `alerts_channel` | `#wx`, `#wx-alerts` | Channel names on the Companion |
 | `bot_enabled`, `alerts_enabled` | `true` | Turn either feature off |
 | `wx_alerts_followup` | `true` | Send the second, alerts message after a `wx` forecast |
 | `states` | none | Two-letter codes. Required when alerts are on |

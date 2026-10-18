@@ -18,7 +18,7 @@ def test_config_valid_and_user_agent():
     cfg = config.parse_config({"contact_email": "me@example.com", "states": ["tx", "ok"],
                                "counties": ["048113"], "zones": ["txz104"]})
     assert cfg.states == ["OK", "TX"] and cfg.zones == ["TXZ104"]
-    assert cfg.user_agent == "openhop-nws-wx/0.1.11 (me@example.com)"
+    assert cfg.user_agent == "openhop-nws-wx/0.1.12 (me@example.com)"
 
 
 @pytest.mark.parametrize("bad", ["", "nope", "a@b", "a b@c.com", "a@b.com, c@d.com"])
@@ -235,3 +235,11 @@ def test_probe_reports_nws_health(tmp_path):
         raise httpx.ConnectError("down")
 
     assert asyncio.run(run(boom))["nws"]["detail"] == "ConnectError"
+
+
+def test_default_channels_are_hash_wx_and_match_either_spelling():
+    cfg = config.parse_config({"contact_email": "me@example.com", "states": ["TX"]})
+    assert (cfg.wx_channel, cfg.alerts_channel) == ("#wx", "#wx-alerts")
+    for names in ({"#wx": 1, "#wx-alerts": 2}, {"WX": 1, "WX-Alerts": 2}, {"#WX": 1, "#Wx-Alerts": 2}):
+        assert main.find_channel(names, cfg.wx_channel) == 1
+        assert main.find_channel(names, cfg.alerts_channel) == 2

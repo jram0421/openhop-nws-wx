@@ -12,7 +12,7 @@
 
   var DEFAULTS = {
     contact_email: "", frame_host: "127.0.0.1", frame_port: 5000,
-    wx_channel: "WX", alerts_channel: "WX-Alerts", bot_enabled: true, alerts_enabled: true, wx_alerts_followup: true,
+    wx_channel: "#wx", alerts_channel: "#wx-alerts", bot_enabled: true, alerts_enabled: true, wx_alerts_followup: true,
     states: [], counties: [], zones: [], min_severity: "Moderate", events: [],
     poll_seconds: 120, alert_cooldown_seconds: 60, alert_hourly_cap: 10, urgent_hourly_cap: 30
   };
