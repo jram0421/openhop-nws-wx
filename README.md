@@ -92,3 +92,7 @@ Each script's docstring has the download URLs. When you change the version, upda
 ## Data sources
 
 Weather data comes from the [National Weather Service API](https://www.weather.gov/documentation/services-web-api). County and zip data come from US Census Bureau files, which are public domain.
+
+## License
+
+[0BSD](LICENSE): do what you like with it, no conditions. The bundled county, zip and event-type data come from US Census Bureau and National Weather Service sources, which are public domain.
