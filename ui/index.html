@@ -41,6 +41,11 @@
   .error { color: var(--bad); font-size: 13px; margin: 4px 0 0; }
   #status { min-height: 1.4em; margin: 8px 0; font-weight: 600; }
   #status.ok { color: var(--ok); } #status.bad { color: var(--bad); }
+  .health { display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px; margin: 6px 0; }
+  .health dt { color: var(--muted); }
+  .health dd { margin: 0; }
+  .pill { font-weight: 700; margin-right: 6px; }
+  .pill.ok { color: var(--ok); } .pill.bad { color: var(--bad); } .pill.warn { color: var(--muted); }
   details summary { cursor: pointer; font-weight: 600; }
   pre { white-space: pre-wrap; word-break: break-word; font-size: 12px; background: var(--bg); padding: 8px; border-radius: 6px; }
 </style>
@@ -49,6 +54,12 @@
 <main>
   <h1>NWS Weather</h1>
   <p class="notice">A convenience relay for hobby mesh channels. It is not a replacement for NOAA Weather Radio or Wireless Emergency Alerts, and messages can be delayed or lost. Do not rely on it for safety.</p>
+
+  <section aria-labelledby="status_h">
+    <h2 id="status_h">Status</h2>
+    <dl id="health" class="health"><dt>Plugin</dt><dd>Checking…</dd></dl>
+    <p class="hint" id="health_note"></p>
+  </section>
 
   <section>
     <h2>NWS access</h2>

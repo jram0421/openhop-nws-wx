@@ -34,10 +34,6 @@ def make_http(calls: list):
     def handler(request: httpx.Request) -> httpx.Response:
         calls.append(str(request.url))
         url = request.url
-        if url.host == "api.zippopotam.us":
-            if url.path.endswith("00000"):
-                return httpx.Response(404)
-            return httpx.Response(200, json={"places": [{"latitude": "32.78", "longitude": "-96.80"}]})
         if url.path == "/alerts/active":
             if url.params.get("point", "").startswith("32.78"):
                 return httpx.Response(200, json=POINT_ALERTS)
@@ -113,7 +109,7 @@ def test_forecast_cached_across_senders():
     run(b.handle("Bob: wx 75201"))
     run(b.handle("Ann: wx 75201"))
     assert sum("/forecast" in c for c in calls) == 1
-    assert sum("zippopotam" in c for c in calls) == 1
+    assert not any("zippopotam" in c for c in calls)  # zips resolve from the bundled table
 
 
 def test_rate_limit_per_sender():
@@ -196,13 +192,12 @@ def test_alerts_zip_lists_all_severities_most_severe_first():
     b, calls = make_bot([], limiter=bot.RateLimiter(min_gap_s=0))
     reply = run(b.handle("Bob: alerts 75201"))
     assert reply == ("@[Bob] 75201: Tornado Warning until 5:30PM Mon; Flood Watch; Wind Advisory until 5:30PM Mon")
-    assert any("alerts/active?point=32.7800%2C-96.8000" in c or "point=32.7800,-96.8000" in c for c in calls)
+    assert any("point=32.7880%2C-96.7990" in c or "point=32.7880,-96.7990" in c for c in calls)
 
 
 def test_alerts_zip_none_unknown_and_invalid():
     b, _ = make_bot([], limiter=bot.RateLimiter(min_gap_s=0))
-    b.weather._zips.put("11111", (40.0, -75.0))
-    assert run(b.handle("Bob: alerts 11111")) == "@[Bob] 11111: no active alerts."
+    assert run(b.handle("Bob: alerts 10001")) == "@[Bob] 10001: no active alerts."
     assert "Unknown zip" in run(b.handle("Bob: alerts 00000"))
     assert "Use:" in run(b.handle("Bob: alerts abc"))
 
@@ -225,3 +220,11 @@ def test_mention_uses_brackets_for_names_with_spaces_and_dots():
     b, _ = make_bot([], limiter=bot.RateLimiter(min_gap_s=0))
     reply = run(b.handle("indianaiot.com Bot: wx 75201"))
     assert reply.startswith("@[indianaiot.com Bot] Dallas TX: ")
+
+
+def test_bundled_zip_table():
+    zips = weather.load_zips()
+    assert len(zips) > 33000
+    lat, lon = zips["90210"]
+    assert 34.0 < lat < 34.2 and -118.5 < lon < -118.3
+    assert "00000" not in zips

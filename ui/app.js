@@ -277,5 +277,81 @@
     }
   });
 
+  // ---- live status, from the plugin's runtime.json via the same settings auth
+  function ago(from, now) {
+    var s = Math.max(0, Math.round(now - from));
+    if (s < 90) return s + "s ago";
+    if (s < 5400) return Math.round(s / 60) + " min ago";
+    return Math.round(s / 3600) + " h ago";
+  }
+
+  function row(label, kind, word, text) {
+    var dl = $("health");
+    var dt = document.createElement("dt"), dd = document.createElement("dd");
+    dt.textContent = label;
+    var pill = document.createElement("span");
+    pill.className = "pill " + kind;
+    pill.textContent = word + " ";
+    dd.appendChild(pill);
+    dd.appendChild(document.createTextNode(text || ""));
+    dl.appendChild(dt); dl.appendChild(dd);
+  }
+
+  function renderHealth(rt, now) {
+    $("health").textContent = "";
+    var states = { running: ["ok", "Running"], connecting: ["warn", "Connecting"], reconnecting: ["bad", "Reconnecting"],
+                   needs_config: ["bad", "Needs settings"], stopped: ["warn", "Stopped"], starting: ["warn", "Starting"] };
+    var st = states[rt.state] || ["warn", rt.state || "Unknown"];
+    row("Plugin", st[0], st[1], (rt.version ? "v" + rt.version : "") + (rt.message ? " – " + rt.message : ""));
+    if (rt.connected) {
+      row("Frame server", "ok", "Connected", rt.channels && rt.channels.length ? "channels: " + rt.channels.join(", ") : "");
+    } else {
+      row("Frame server", "bad", "Not connected", rt.retry_in ? "retrying in about " + rt.retry_in + "s" : "");
+    }
+    var n = rt.nws;
+    if (n) {
+      row("NWS API", n.ok ? "ok" : "bad", n.ok ? "Working" : "Problem",
+          n.detail + " (" + (n.source === "poll" ? "alert poll" : "check") + " " + ago(n.checked, now) + ")");
+    } else {
+      row("NWS API", "warn", "Not checked yet", "");
+    }
+    if (rt.last_poll) {
+      row("Alerts", rt.last_error ? "bad" : "ok", rt.last_error ? "Poll failing" : "Polling",
+          rt.last_error ? rt.last_error : "last poll " + ago(rt.last_poll, now) + ", " + (rt.alerts_active || 0) + " active matching your filters");
+    }
+    if (rt.last_test) {
+      row("Last test", rt.last_test.ok ? "ok" : "bad", rt.last_test.ok ? "Sent" : "Failed", rt.last_test.detail + " (" + ago(rt.last_test.at, now) + ")");
+    }
+    (rt.warnings || []).forEach(function (w) { row("Warning", "bad", "!", w); });
+    $("health_note").textContent = "Updated " + ago(rt.updated || now, now) + ".";
+  }
+
+  function healthMessage(text) {
+    $("health").textContent = "";
+    row("Plugin", "warn", text, "");
+    $("health_note").textContent = "";
+  }
+
+  function refreshHealth() {
+    if (document.hidden) return;
+    fetch("/api/plugins/runtime?id=" + encodeURIComponent(PLUGIN_ID), { credentials: "same-origin", headers: authHeaders() })
+      .then(function (r) {
+        if (!r.ok) throw { status: r.status };
+        var date = Date.parse(r.headers.get("Date") || "");
+        return r.json().then(function (b) { return { body: b, now: isNaN(date) ? Date.now() / 1000 : date / 1000 }; });
+      })
+      .then(function (res) {
+        var rt = res.body.runtime;
+        if (!res.body.exists || !rt || !rt.state) healthMessage("Not reporting yet");
+        else renderHealth(rt, res.now);
+      })
+      .catch(function (e) {
+        healthMessage(e && (e.status === 401 || e.status === 403)
+          ? "Log in to the dashboard to see status" : "Status unavailable");
+      });
+  }
+
   load();
+  refreshHealth();
+  setInterval(refreshHealth, 10000);
 })();

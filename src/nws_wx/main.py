@@ -25,6 +25,7 @@ CONTACTS_TTL_S = 60
 SYNC_INTERVAL_S = 30  # also keeps the frame server's idle timeout from firing
 CONFIG_CHECK_S = 5
 SEEN_CAP = 500
+NWS_PROBE_S = 300
 
 
 class Status:
@@ -32,7 +33,7 @@ class Status:
 
     def __init__(self, data_dir: Path):
         self.path = data_dir / "runtime.json"
-        self.data: dict = {"state": "starting"}
+        self.data: dict = {"state": "starting", "version": __version__}
 
     def update(self, **fields) -> None:
         self.data.update(fields)
@@ -40,6 +41,32 @@ class Status:
         tmp = self.path.with_name(".runtime.json.tmp")
         tmp.write_text(json.dumps(self.data, indent=2), "utf-8")
         tmp.replace(self.path)
+
+
+def describe_error(e: Exception) -> str:
+    if isinstance(e, httpx.HTTPStatusError):
+        return f"HTTP {e.response.status_code}"
+    return type(e).__name__
+
+
+def set_nws(status: Status, ok: bool, detail: str, source: str) -> None:
+    status.update(nws={"ok": ok, "detail": detail, "source": source, "checked": int(time.time())})
+
+
+async def probe_nws(http: httpx.AsyncClient, status: Status) -> None:
+    """One cheap request so the config page can show whether NWS answers our User-Agent."""
+    try:
+        resp = await http.get(f"{alert_mod.NWS_BASE}/alerts/active/count", headers={"Accept": "application/json"})
+        resp.raise_for_status()
+        set_nws(status, True, f"HTTP {resp.status_code}", "probe")
+    except httpx.HTTPError as e:
+        set_nws(status, False, describe_error(e), "probe")
+
+
+async def nws_probe_loop(http: httpx.AsyncClient, status: Status) -> None:
+    while True:
+        await probe_nws(http, status)
+        await asyncio.sleep(NWS_PROBE_S)
 
 
 def load_seen(path: Path) -> set[str]:
@@ -151,9 +178,11 @@ async def alert_loop(client: FrameClient, http: httpx.AsyncClient, cfg: Config, 
             active[:] = [a for a in current if relay.filter.matches(a)]
             relay.prune({a.id for a in current})
             status.update(last_poll=int(time.time()), alerts_active=len(active), last_error=None)
+            set_nws(status, True, f"{len(current)} alerts fetched", "poll")
         except httpx.HTTPError as e:
             log.warning("NWS poll failed: %s", e)
-            status.update(last_error=f"NWS poll failed: {type(e).__name__}")
+            status.update(last_error=f"NWS poll failed: {describe_error(e)}")
+            set_nws(status, False, describe_error(e), "poll")
             await asyncio.sleep(cfg.poll_seconds)
             continue
         deadline = time.monotonic() + cfg.poll_seconds
@@ -190,6 +219,7 @@ async def run_session(cfg: Config, data_dir: Path, status: Status, seen: set[str
         async with httpx.AsyncClient(headers={"User-Agent": cfg.user_agent}, timeout=15.0,
                                      follow_redirects=True) as http:
             active: list = []
+            tasks.append(asyncio.create_task(nws_probe_loop(http, status)))
             if wx_idx is None:
                 # The bot's message loop doubles as the keepalive; without it we need our own.
                 tasks.append(asyncio.create_task(keepalive_loop(client)))

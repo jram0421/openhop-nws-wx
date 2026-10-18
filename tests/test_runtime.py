@@ -18,7 +18,7 @@ def test_config_valid_and_user_agent():
     cfg = config.parse_config({"contact_email": "me@example.com", "states": ["tx", "ok"],
                                "counties": ["048113"], "zones": ["txz104"]})
     assert cfg.states == ["OK", "TX"] and cfg.zones == ["TXZ104"]
-    assert cfg.user_agent == "openhop-nws-wx/0.1.6 (me@example.com)"
+    assert cfg.user_agent == "openhop-nws-wx/0.1.7 (me@example.com)"
 
 
 @pytest.mark.parametrize("bad", ["", "nope", "a@b", "a b@c.com", "a@b.com, c@d.com"])
@@ -208,3 +208,30 @@ def test_state_file_keeps_seen_and_test_done(tmp_path):
     main.update_state(path, test_done=5)
     main.save_seen(path, {"a", "b"})
     assert main.read_state(path) == {"seen": ["a", "b"], "test_done": 5}
+
+
+def test_probe_reports_nws_health(tmp_path):
+    import httpx
+
+    seen = {}
+
+    def ok(request):
+        seen["ua"] = request.headers["user-agent"]
+        return httpx.Response(200, json={"total": 1})
+
+    async def run(handler):
+        status = main.Status(tmp_path)
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler), headers={"User-Agent": "ua-test"}) as http:
+            await main.probe_nws(http, status)
+        return json.loads((tmp_path / "runtime.json").read_text())
+
+    data = asyncio.run(run(ok))
+    assert data["nws"]["ok"] is True and data["nws"]["detail"] == "HTTP 200" and seen["ua"] == "ua-test"
+    assert data["version"]
+    blocked = asyncio.run(run(lambda r: httpx.Response(403)))["nws"]
+    assert blocked["ok"] is False and blocked["detail"] == "HTTP 403"
+
+    def boom(request):
+        raise httpx.ConnectError("down")
+
+    assert asyncio.run(run(boom))["nws"]["detail"] == "ConnectError"

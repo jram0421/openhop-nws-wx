@@ -1,17 +1,26 @@
 """Forecast lookups: NWS /points -> gridpoint forecast, with caching."""
 
+import json
 import time
 from dataclasses import dataclass
+from functools import lru_cache
+from importlib import resources
 
 import httpx
 
 from .alerts import MAX_TEXT_BYTES, NWS_BASE, Alert, parse_alerts
 
-ZIP_URL = "https://api.zippopotam.us/us/{zip}"
 POINTS_TTL = 24 * 3600
 FORECAST_TTL = 15 * 60
 ALERTS_TTL = 5 * 60
 MAX_CACHE = 512
+
+
+@lru_cache(maxsize=1)
+def load_zips() -> dict[str, tuple[float, float]]:
+    """Bundled Census ZCTA centroids (zipdata.json), loaded on first use."""
+    raw = resources.files(__package__).joinpath("zipdata.json").read_text("utf-8")
+    return {z: (lat, lon) for z, (lat, lon) in json.loads(raw).items()}
 
 
 class TTLCache:
@@ -79,21 +88,10 @@ class WeatherClient:
         self._http = client
         self._points = TTLCache(POINTS_TTL, clock)
         self._forecasts = TTLCache(FORECAST_TTL, clock)
-        self._zips = TTLCache(POINTS_TTL, clock)
         self._point_alerts = TTLCache(ALERTS_TTL, clock)
 
     async def zip_to_latlon(self, zipcode: str) -> tuple[float, float] | None:
-        hit = self._zips.get(zipcode)
-        if hit:
-            return hit
-        resp = await self._http.get(ZIP_URL.format(zip=zipcode))
-        if resp.status_code == 404:
-            return None
-        resp.raise_for_status()
-        place = resp.json()["places"][0]
-        coords = (float(place["latitude"]), float(place["longitude"]))
-        self._zips.put(zipcode, coords)
-        return coords
+        return load_zips().get(zipcode)
 
     async def forecast(self, lat: float, lon: float) -> Forecast | None:
         """Forecast periods, or None when NWS has no coverage for the point."""
