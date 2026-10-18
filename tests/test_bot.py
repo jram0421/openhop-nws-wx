@@ -228,3 +228,58 @@ def test_bundled_zip_table():
     lat, lon = zips["90210"]
     assert 34.0 < lat < 34.2 and -118.5 < lon < -118.3
     assert "00000" not in zips
+
+
+def test_wx_zip_sends_alerts_as_second_message():
+    b, _ = make_bot([], limiter=bot.RateLimiter(min_gap_s=0))
+    out = run(b.replies("Bob: wx 75201"))
+    assert len(out) == 2 and out[0].startswith("@[Bob] Dallas TX: Today 78F")
+    assert out[1] == "@[Bob] Alerts for 75201: Tornado Warning until 5:30PM Mon; Flood Watch; Wind Advisory until 5:30PM Mon"
+    assert run(b.handle("Ann: wx 75201")) == out[0].replace("Bob", "Ann")  # handle() is just the first message
+
+
+def test_wx_zip_without_alerts_is_one_message():
+    b, _ = make_bot([], limiter=bot.RateLimiter(min_gap_s=0))
+    assert len(run(b.replies("Bob: wx 10001"))) == 1
+
+
+def test_wx_gps_also_gets_alerts_followup():
+    b, _ = make_bot([contacts.parse_contact(contact_frame("Bob", 32.78, -96.8))])
+    out = run(b.replies("Bob: wx"))
+    assert len(out) == 2 and out[1].startswith("@[Bob] Alerts at your location: Tornado Warning")
+
+
+def test_followup_can_be_turned_off():
+    b, _ = make_bot([], limiter=bot.RateLimiter(min_gap_s=0))
+    b.alerts_followup = False
+    assert len(run(b.replies("Bob: wx 75201"))) == 1
+
+
+def test_followup_failure_keeps_the_forecast():
+    base = make_http([])
+
+    def handler(request):
+        return httpx.Response(503) if request.url.path == "/alerts/active" else base(request)
+
+    http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+    async def get_contacts():
+        return []
+
+    b = bot.Bot(weather.WeatherClient(http), get_contacts, list)
+    out = run(b.replies("Bob: wx 75201"))
+    assert len(out) == 1 and "Dallas TX" in out[0]
+
+
+def test_followup_overflow_counts_the_rest():
+    b, _ = make_bot([], limiter=bot.RateLimiter(min_gap_s=0))
+    b.max_bytes = 70
+    out = run(b.replies("Bob: wx 75201"))
+    assert out[1].endswith("more") and len(out[1].encode()) <= 70
+
+
+def test_followup_config_flag():
+    from nws_wx import config
+    assert config.parse_config({"contact_email": "a@b.co", "states": ["TX"]}).wx_alerts_followup is True
+    cfg = config.parse_config({"contact_email": "a@b.co", "states": ["TX"], "wx_alerts_followup": False})
+    assert cfg.wx_alerts_followup is False

@@ -6,6 +6,7 @@
   "alerts_channel": "WX-Alerts",
   "bot_enabled": true,
   "alerts_enabled": true,
+  "wx_alerts_followup": true,
   "states": [],
   "counties": [],
   "zones": [],

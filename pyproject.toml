@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "openhop-nws-wx"
-version = "0.1.7"
+version = "0.1.8"
 description = "OpenHop plugin: NWS alert relay and wx bot for mesh channels"
 requires-python = ">=3.11"
 dependencies = ["httpx>=0.27"]

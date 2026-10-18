@@ -12,7 +12,7 @@
 
   var DEFAULTS = {
     contact_email: "", frame_host: "127.0.0.1", frame_port: 5000,
-    wx_channel: "WX", alerts_channel: "WX-Alerts", bot_enabled: true, alerts_enabled: true,
+    wx_channel: "WX", alerts_channel: "WX-Alerts", bot_enabled: true, alerts_enabled: true, wx_alerts_followup: true,
     states: [], counties: [], zones: [], min_severity: "Moderate", events: [],
     poll_seconds: 120, alert_cooldown_seconds: 60, alert_hourly_cap: 10
   };
@@ -100,6 +100,7 @@
      "poll_seconds", "alert_cooldown_seconds", "alert_hourly_cap"].forEach(function (k) { $(k).value = c[k]; });
     $("bot_enabled").checked = c.bot_enabled !== false;
     $("alerts_enabled").checked = c.alerts_enabled !== false;
+    $("wx_alerts_followup").checked = c.wx_alerts_followup !== false;
     $("zones").value = (c.zones || []).join("\n");
     sel.states = new Set(c.states || []);
     sel.counties = new Set(c.counties || []);
@@ -139,6 +140,7 @@
       alerts_channel: $("alerts_channel").value.trim(),
       bot_enabled: $("bot_enabled").checked,
       alerts_enabled: $("alerts_enabled").checked,
+      wx_alerts_followup: $("wx_alerts_followup").checked,
       states: Array.from(sel.states).sort(),
       counties: Array.from(sel.counties).sort(),
       zones: Array.from(new Set(zones)).sort(),

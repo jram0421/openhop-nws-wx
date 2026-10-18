@@ -26,6 +26,7 @@ SYNC_INTERVAL_S = 30  # also keeps the frame server's idle timeout from firing
 CONFIG_CHECK_S = 5
 SEEN_CAP = 500
 NWS_PROBE_S = 300
+REPLY_GAP_S = 2.0  # spacing between messages of one reply, to be kind to the channel
 
 
 class Status:
@@ -163,8 +164,9 @@ async def message_loop(client: FrameClient, bot: Bot, wx_idx: int, status: Statu
         for msg in await client.drain_messages():
             if msg.channel_idx != wx_idx:
                 continue
-            reply = await bot.handle(msg.text)
-            if reply:
+            for n, reply in enumerate(await bot.replies(msg.text)):
+                if n:
+                    await asyncio.sleep(REPLY_GAP_S)
                 await client.send_channel(wx_idx, reply)
                 status.data["replies"] = status.data.get("replies", 0) + 1
 
@@ -231,7 +233,8 @@ async def run_session(cfg: Config, data_dir: Path, status: Status, seen: set[str
                         cache["items"], cache["at"] = await client.contacts(), time.monotonic()
                     return cache["items"]
 
-                bot = Bot(WeatherClient(http), get_contacts, lambda: list(active), max_bytes=budget)
+                bot = Bot(WeatherClient(http), get_contacts, lambda: list(active), max_bytes=budget,
+                          alerts_followup=cfg.wx_alerts_followup)
                 tasks.append(asyncio.create_task(message_loop(client, bot, wx_idx, status)))
             if alerts_idx is not None:
                 flt = alert_mod.AlertFilter(states=cfg.states, same_codes=set(cfg.counties), zones=set(cfg.zones),

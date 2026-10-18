@@ -21,6 +21,7 @@ DEFAULTS = {
     "alerts_channel": "WX-Alerts",
     "bot_enabled": True,
     "alerts_enabled": True,
+    "wx_alerts_followup": True,
     "states": [],
     "counties": [],
     "zones": [],
@@ -46,6 +47,7 @@ class Config:
     alerts_channel: str
     bot_enabled: bool
     alerts_enabled: bool
+    wx_alerts_followup: bool = True
     states: list[str] = field(default_factory=list)
     counties: list[str] = field(default_factory=list)
     zones: list[str] = field(default_factory=list)
@@ -95,7 +97,7 @@ def parse_config(raw: object) -> Config:
     for key in ("frame_host", "wx_channel", "alerts_channel"):
         if not isinstance(raw[key], str) or not raw[key].strip():
             errors.append(f"{key} must be a non-empty string")
-    for key in ("bot_enabled", "alerts_enabled"):
+    for key in ("bot_enabled", "alerts_enabled", "wx_alerts_followup"):
         if not isinstance(raw[key], bool):
             errors.append(f"{key} must be true or false")
     if raw["min_severity"] not in SEVERITY_ORDER:
@@ -109,6 +111,7 @@ def parse_config(raw: object) -> Config:
         alerts_channel=str(raw["alerts_channel"]).strip(),
         bot_enabled=raw["bot_enabled"] is True,
         alerts_enabled=raw["alerts_enabled"] is True,
+        wx_alerts_followup=raw["wx_alerts_followup"] is True,
         states=_list(raw, "states", STATE_RE, errors, upper=True),
         counties=_list(raw, "counties", SAME_RE, errors),
         zones=_list(raw, "zones", ZONE_RE, errors, upper=True),
