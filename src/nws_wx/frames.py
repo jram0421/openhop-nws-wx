@@ -92,6 +92,9 @@ class FrameClient:
         self.host, self.port = host, port
         self.waiting = asyncio.Event()
         self.closed = asyncio.Event()
+        self.close_reason = ""
+        self.last_sent = 0
+        self._connected_at = 0.0
         self._replies: asyncio.Queue[bytes] = asyncio.Queue()
         self._lock = asyncio.Lock()
         self._reader = self._writer = self._task = None
@@ -100,6 +103,7 @@ class FrameClient:
         self._reader, self._writer = await asyncio.wait_for(
             asyncio.open_connection(self.host, self.port), timeout
         )
+        self._connected_at = time.monotonic()
         self._task = asyncio.create_task(self._read_loop())
 
     async def close(self) -> None:
@@ -126,15 +130,25 @@ class FrameClient:
                     continue
                 else:
                     self._replies.put_nowait(payload)
-        except (asyncio.IncompleteReadError, ConnectionError, asyncio.CancelledError):
+        except asyncio.IncompleteReadError:
+            self.close_reason = "server closed the connection (EOF)"
+        except ConnectionError as e:
+            self.close_reason = f"connection error: {type(e).__name__}"
+        except asyncio.CancelledError:
             pass
+        except Exception as e:  # keep the reason visible instead of a silent task failure
+            self.close_reason = f"read loop failed: {type(e).__name__}: {e}"
         finally:
+            if self.close_reason:
+                alive = time.monotonic() - self._connected_at
+                self.close_reason += f" after {alive:.1f}s (last command sent: {self.last_sent})"
             self.closed.set()
 
     async def request(self, payload: bytes, timeout: float = 10.0) -> bytes:
         async with self._lock:
             while not self._replies.empty():
                 self._replies.get_nowait()
+            self.last_sent = payload[0]
             self._writer.write(encode_frame(payload))
             await self._writer.drain()
             return await asyncio.wait_for(self._replies.get(), timeout)
@@ -144,6 +158,7 @@ class FrameClient:
         async with self._lock:
             while not self._replies.empty():
                 self._replies.get_nowait()
+            self.last_sent = payload[0]
             self._writer.write(encode_frame(payload))
             await self._writer.drain()
             frames: list[bytes] = []
@@ -166,6 +181,10 @@ class FrameClient:
         if info[0] != RESP_DEVICE_INFO:
             raise FrameError("unexpected device info")
         return info[3]
+
+    async def keepalive(self) -> None:
+        """Harmless read-only command so the server's idle timeout never fires."""
+        await self.request(bytes([CMD_DEVICE_QUERY, APP_VERSION]))
 
     async def channels(self, max_channels: int) -> dict[str, int]:
         found: dict[str, int] = {}

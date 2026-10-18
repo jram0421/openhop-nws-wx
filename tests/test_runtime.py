@@ -18,7 +18,7 @@ def test_config_valid_and_user_agent():
     cfg = config.parse_config({"contact_email": "me@example.com", "states": ["tx", "ok"],
                                "counties": ["048113"], "zones": ["txz104"]})
     assert cfg.states == ["OK", "TX"] and cfg.zones == ["TXZ104"]
-    assert cfg.user_agent == "openhop-nws-wx/0.1.1 (me@example.com)"
+    assert cfg.user_agent == "openhop-nws-wx/0.1.2 (me@example.com)"
 
 
 @pytest.mark.parametrize("bad", ["", "nope", "a@b", "a b@c.com", "a@b.com, c@d.com"])
@@ -127,3 +127,42 @@ def test_supervise_retries_when_frame_server_down(tmp_path):
         await asyncio.wait_for(task, 2)
 
     asyncio.run(run())
+
+
+def test_find_channel_is_case_and_hash_tolerant():
+    chans = {"Public": 0, "#wx": 1, "#WX-Alerts": 2}
+    assert main.find_channel(chans, "WX") == 1
+    assert main.find_channel(chans, "wx-alerts") == 2
+    assert main.find_channel(chans, "Public") == 0
+    assert main.find_channel(chans, "nope") is None
+    assert main.find_channel({"wx": 3, "#wx": 4}, "#wx") == 4  # exact match wins
+
+
+def test_keepalive_uses_device_query():
+    async def run():
+        fake = FakeFrameServer()
+        server = await asyncio.start_server(fake.handle, "127.0.0.1", 0)
+        client = frames.FrameClient("127.0.0.1", server.sockets[0].getsockname()[1])
+        await client.connect()
+        await client.keepalive()
+        assert client.last_sent == frames.CMD_DEVICE_QUERY
+        await client.close()
+        server.close()
+
+    asyncio.run(asyncio.wait_for(run(), 10))
+
+
+def test_close_reason_reports_server_hangup():
+    async def run():
+        async def hang_up(reader, writer):
+            await asyncio.sleep(0.1)
+            writer.close()
+
+        server = await asyncio.start_server(hang_up, "127.0.0.1", 0)
+        client = frames.FrameClient("127.0.0.1", server.sockets[0].getsockname()[1])
+        await client.connect()
+        await asyncio.wait_for(client.closed.wait(), 5)
+        assert "EOF" in client.close_reason and "after 0." in client.close_reason
+        server.close()
+
+    asyncio.run(asyncio.wait_for(run(), 10))

@@ -72,6 +72,23 @@ def read_raw(path: Path) -> bytes:
         return b""
 
 
+def find_channel(channels: dict[str, int], name: str) -> int | None:
+    """Exact name first, then case-insensitive ignoring a leading '#'."""
+    if name in channels:
+        return channels[name]
+    want = name.lstrip("#").casefold()
+    for have, idx in channels.items():
+        if have.lstrip("#").casefold() == want:
+            return idx
+    return None
+
+
+async def keepalive_loop(client: FrameClient) -> None:
+    while True:
+        await asyncio.sleep(SYNC_INTERVAL_S)
+        await client.keepalive()
+
+
 async def message_loop(client: FrameClient, bot: Bot, wx_idx: int, status: Status) -> None:
     while True:
         try:
@@ -117,13 +134,14 @@ async def run_session(cfg: Config, data_dir: Path, status: Status, seen: set[str
     tasks: list[asyncio.Task] = []
     try:
         channels = await client.channels(await client.start())
-        wx_idx = channels.get(cfg.wx_channel) if cfg.bot_enabled else None
-        alerts_idx = channels.get(cfg.alerts_channel) if cfg.alerts_enabled else None
+        log.info("connected; channels on the companion: %s", sorted(channels))
+        wx_idx = find_channel(channels, cfg.wx_channel) if cfg.bot_enabled else None
+        alerts_idx = find_channel(channels, cfg.alerts_channel) if cfg.alerts_enabled else None
         problems = []
         if cfg.bot_enabled and wx_idx is None:
-            problems.append(f"channel '{cfg.wx_channel}' not found; bot disabled")
+            problems.append(f"channel '{cfg.wx_channel}' not found (have: {', '.join(sorted(channels))}); bot disabled")
         if cfg.alerts_enabled and alerts_idx is None:
-            problems.append(f"channel '{cfg.alerts_channel}' not found; alerts disabled")
+            problems.append(f"channel '{cfg.alerts_channel}' not found (have: {', '.join(sorted(channels))}); alerts disabled")
         status.update(state="running", connected=True, channels=sorted(channels), warnings=problems)
         for p in problems:
             log.warning(p)
@@ -131,6 +149,9 @@ async def run_session(cfg: Config, data_dir: Path, status: Status, seen: set[str
         async with httpx.AsyncClient(headers={"User-Agent": cfg.user_agent}, timeout=15.0,
                                      follow_redirects=True) as http:
             active: list = []
+            if wx_idx is None:
+                # The bot's message loop doubles as the keepalive; without it we need our own.
+                tasks.append(asyncio.create_task(keepalive_loop(client)))
             if wx_idx is not None:
                 cache = {"at": 0.0, "items": []}
 
@@ -155,7 +176,7 @@ async def run_session(cfg: Config, data_dir: Path, status: Status, seen: set[str
                 if t not in watchers and t.exception():
                     raise t.exception()
             if watchers[0] in done:
-                raise ConnectionError("frame server closed the connection")
+                raise ConnectionError(client.close_reason or "frame server closed the connection")
             log.info("config changed, restarting session")
     finally:
         for t in tasks:
