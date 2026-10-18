@@ -41,3 +41,5 @@ No lookup-by-name command. Enumerate indexes 0..max_channels-1 with `CMD_GET_CHA
 `CMD_GET_CONTACTS` (4) replies `CONTACTS_START` (2, u32 count), N x `RESP_CODE_CONTACT` (3), then `END_OF_CONTACTS` (4).
 Contact frame = code(1) + body(147): pubkey(32) type(1) flags(1) out_path_len(1) out_path(64) name(32) last_advert(u32) lat(i32 1e-6 deg) lon(i32 1e-6 deg) lastmod(u32).
 Channel messages carry no sender key, only a `name: text` prefix, so the sender is matched to a contact by exact name. Duplicate names are treated as ambiguous. lat=lon=0 means no GPS (the docs define no sentinel; this is an assumption). The location is the one from the node's last advert, not live.
+
+**Update 2026-10-18:** the cookie-only save fails (401), but sending the dashboard's `pymc_jwt_token` (localStorage, same origin) as `Authorization: Bearer` works; confirmed saving from the plugin page on a live Repeater.
