@@ -65,29 +65,29 @@ class Bot:
             if words[0] == "alerts":
                 if len(words) == 2:
                     return await self._alerts_zip(sender, words[1])
-                return f"@{sender} " + self._alerts_text(self.get_alerts())
+                return f"@[{sender}] " + self._alerts_text(self.get_alerts())
             if len(words) == 2:
                 return await self._wx_zip(sender, words[1])
             return await self._wx_here(sender)
         except (httpx.HTTPError, KeyError, ValueError):
-            return f"@{sender} {UNAVAILABLE}"
+            return f"@[{sender}] {UNAVAILABLE}"
 
     async def _wx_zip(self, sender: str, zipcode: str) -> str:
         if not ZIP_RE.match(zipcode):
-            return f"@{sender} Use: wx, wx <zip>, alerts, or alerts <zip>"
+            return f"@[{sender}] Use: wx, wx <zip>, alerts, or alerts <zip>"
         coords = await self.weather.zip_to_latlon(zipcode)
         if not coords:
-            return f"@{sender} Unknown zip {zipcode}"
+            return f"@[{sender}] Unknown zip {zipcode}"
         return await self._forecast_reply(sender, *coords)
 
     async def _alerts_zip(self, sender: str, zipcode: str) -> str:
         if not ZIP_RE.match(zipcode):
-            return f"@{sender} Use: wx, wx <zip>, alerts, or alerts <zip>"
+            return f"@[{sender}] Use: wx, wx <zip>, alerts, or alerts <zip>"
         coords = await self.weather.zip_to_latlon(zipcode)
         if not coords:
-            return f"@{sender} Unknown zip {zipcode}"
+            return f"@[{sender}] Unknown zip {zipcode}"
         found = await self.weather.alerts_at(*coords)
-        prefix = f"@{sender} {zipcode}: "
+        prefix = f"@[{sender}] {zipcode}: "
         if not found:
             return f"{prefix}no active alerts."
         items = [f"{a.event}{until(a)}" for a in found]
@@ -111,14 +111,14 @@ class Bot:
                 "ambiguous": "more than one node uses your name",
                 "no_gps": "your node isn't sharing a location",
             }
-            return truncate(f"@{sender} {reasons[status]}. Try: wx <zip>", self.max_bytes)
+            return truncate(f"@[{sender}] {reasons[status]}. Try: wx <zip>", self.max_bytes)
         return await self._forecast_reply(sender, contact.lat, contact.lon)
 
     async def _forecast_reply(self, sender: str, lat: float, lon: float) -> str:
         fc = await self.weather.forecast(lat, lon)
         if fc is None:
-            return f"@{sender} No NWS forecast for that location (US only)."
-        return compose(f"@{sender} {fc.place}: ", fc.parts, self.max_bytes)
+            return f"@[{sender}] No NWS forecast for that location (US only)."
+        return compose(f"@[{sender}] {fc.place}: ", fc.parts, self.max_bytes)
 
     def _alerts_text(self, alerts: list[Alert]) -> str:
         if not alerts:

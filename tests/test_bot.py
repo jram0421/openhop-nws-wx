@@ -82,7 +82,7 @@ def test_parse_contact_and_resolve():
 def test_wx_uses_sender_gps():
     b, calls = make_bot([contacts.parse_contact(contact_frame("Bob", 32.78, -96.8))])
     reply = run(b.handle("Bob: wx"))
-    assert reply == "@Bob Dallas TX: Today 78F Sunny, W 10mph | Tonight 60F Clear"
+    assert reply == "@[Bob] Dallas TX: Today 78F Sunny, W 10mph | Tonight 60F Clear"
     assert any("/points/32.7800,-96.8000" in c for c in calls)
 
 
@@ -133,14 +133,14 @@ def test_ignores_non_commands_and_own_replies():
     assert run(b.handle("Bob: hello")) is None
     assert run(b.handle("no sender prefix")) is None
     assert run(b.handle("Bob: wx 1 2")) is None
-    assert run(b.handle("Bob: @Ann wx")) is None
+    assert run(b.handle("Bob: @[Ann] wx")) is None
 
 
 def test_alerts_command():
     a = alerts.Alert("a", "Tornado Warning", "Extreme", "Dallas, TX; Tarrant, TX", "h", None,
                      frozenset(), frozenset())
     b, _ = make_bot([], active=[a])
-    assert run(b.handle("Bob: alerts")) == "@Bob Active: Tornado Warning (Dallas, TX)"
+    assert run(b.handle("Bob: alerts")) == "@[Bob] Active: Tornado Warning (Dallas, TX)"
     b, _ = make_bot([])
     assert "No active alerts" in run(b.handle("Bob: alerts"))
 
@@ -169,12 +169,12 @@ def test_forecast_parts_abbreviate_days_and_keep_wind_to_first():
 
 def test_compose_adds_whole_periods_only():
     parts = weather.forecast_parts(LONG_PERIODS)
-    full = weather.compose("@Bob Dallas TX: ", parts, 200)
+    full = weather.compose("@[Bob] Dallas TX: ", parts, 200)
     assert full.endswith("Thu Night 66F Slight Chance Showers") and "..." not in full
-    tight = weather.compose("@Bob Dallas TX: ", parts, 75)
-    assert tight == "@Bob Dallas TX: Today 78F Sunny, W 10mph | Tonight 60F Clear"
+    tight = weather.compose("@[Bob] Dallas TX: ", parts, 75)
+    assert tight == "@[Bob] Dallas TX: Today 78F Sunny, W 10mph | Tonight 60F Clear"
     assert len(tight.encode()) <= 75
-    assert weather.compose("@Bob Dallas TX: ", parts, 30).endswith("...")  # only the first can be cut
+    assert weather.compose("@[Bob] Dallas TX: ", parts, 30).endswith("...")  # only the first can be cut
 
 
 def test_message_budget_accounts_for_node_name():
@@ -195,14 +195,14 @@ def test_parse_self_name():
 def test_alerts_zip_lists_all_severities_most_severe_first():
     b, calls = make_bot([], limiter=bot.RateLimiter(min_gap_s=0))
     reply = run(b.handle("Bob: alerts 75201"))
-    assert reply == ("@Bob 75201: Tornado Warning until 5:30PM Mon; Flood Watch; Wind Advisory until 5:30PM Mon")
+    assert reply == ("@[Bob] 75201: Tornado Warning until 5:30PM Mon; Flood Watch; Wind Advisory until 5:30PM Mon")
     assert any("alerts/active?point=32.7800%2C-96.8000" in c or "point=32.7800,-96.8000" in c for c in calls)
 
 
 def test_alerts_zip_none_unknown_and_invalid():
     b, _ = make_bot([], limiter=bot.RateLimiter(min_gap_s=0))
     b.weather._zips.put("11111", (40.0, -75.0))
-    assert run(b.handle("Bob: alerts 11111")) == "@Bob 11111: no active alerts."
+    assert run(b.handle("Bob: alerts 11111")) == "@[Bob] 11111: no active alerts."
     assert "Unknown zip" in run(b.handle("Bob: alerts 00000"))
     assert "Use:" in run(b.handle("Bob: alerts abc"))
 
@@ -211,7 +211,7 @@ def test_alerts_zip_fits_budget_and_counts_the_rest():
     b, _ = make_bot([], limiter=bot.RateLimiter(min_gap_s=0))
     b.max_bytes = 70
     reply = run(b.handle("Bob: alerts 75201"))
-    assert reply.startswith("@Bob 75201: Tornado Warning until 5:30PM Mon") and reply.endswith("more")
+    assert reply.startswith("@[Bob] 75201: Tornado Warning until 5:30PM Mon") and reply.endswith("more")
     assert len(reply.encode()) <= 70
 
 
@@ -219,3 +219,9 @@ def test_alerts_zip_cached():
     b, calls = make_bot([], limiter=bot.RateLimiter(min_gap_s=0))
     run(b.handle("Bob: alerts 75201")); run(b.handle("Ann: alerts 75201"))
     assert sum("alerts/active" in c for c in calls) == 1
+
+
+def test_mention_uses_brackets_for_names_with_spaces_and_dots():
+    b, _ = make_bot([], limiter=bot.RateLimiter(min_gap_s=0))
+    reply = run(b.handle("indianaiot.com Bot: wx 75201"))
+    assert reply.startswith("@[indianaiot.com Bot] Dallas TX: ")
