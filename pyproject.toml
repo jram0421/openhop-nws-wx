@@ -23,7 +23,7 @@ nws_wx = ["zipdata.json"]
 
 [tool.setuptools.data-files]
 "share/openhop/plugins/nws-wx" = ["openhop-plugin.json", "config.default.json"]
-"share/openhop/plugins/nws-wx/ui" = ["ui/index.html", "ui/app.js", "ui/data.js"]
+"share/openhop/plugins/nws-wx/ui" = ["ui/index.html", "ui/app.js", "ui/data.js", "ui/logo.svg"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

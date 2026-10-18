@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="t">
+  <title id="t">OpenHop NWS Weather</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1d4f8c"/>
+      <stop offset="1" stop-color="#0d2a4d"/>
+    </linearGradient>
+  </defs>
+  <rect width="256" height="256" rx="56" fill="url(#bg)"/>
+  <!-- radio waves leaving the cloud -->
+  <g fill="none" stroke="#7fd1ff" stroke-width="9" stroke-linecap="round">
+    <path d="M196 50 a28 28 0 0 1 20 20"/>
+    <path d="M190 28 a50 50 0 0 1 38 38"/>
+  </g>
+  <!-- cloud -->
+  <g fill="#f4f8fc">
+    <circle cx="92" cy="130" r="32"/>
+    <circle cx="132" cy="108" r="42"/>
+    <circle cx="176" cy="134" r="30"/>
+    <rect x="68" y="132" width="138" height="32" rx="16"/>
+  </g>
+  <!-- bolt -->
+  <polygon points="140,124 108,178 130,178 116,226 172,160 147,160 164,124" fill="#ffb703" stroke="#0d2a4d" stroke-width="5" stroke-linejoin="round"/>
+</svg>

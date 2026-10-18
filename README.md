@@ -1,3 +1,5 @@
+<p align="center"><img src="assets/logo.png" width="128" alt="OpenHop NWS Weather logo"></p>
+
 # OpenHop NWS Weather
 
 An [OpenHop](https://docs.openhop.dev/) Repeater plugin that relays National Weather Service alerts to a mesh channel and answers weather requests from other nodes.
