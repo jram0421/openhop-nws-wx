@@ -1,8 +1,8 @@
-<p align="center"><img src="assets/logo.png" width="128" alt="OpenHop NWS Weather logo"></p>
+<p align="center"><img src="assets/logo.png" width="128" alt="Stormhop logo"></p>
 
-# OpenHop NWS Weather
+# Stormhop
 
-An [OpenHop](https://docs.openhop.dev/) Repeater plugin that relays National Weather Service alerts to a mesh channel and answers weather requests from other nodes.
+Stormhop is an [OpenHop](https://docs.openhop.dev/) Repeater plugin that relays National Weather Service alerts to a mesh channel and answers weather requests from other nodes.
 
 > **A convenience relay, not a safety system.** It is not a replacement for NOAA Weather Radio or Wireless Emergency Alerts. Messages can be delayed, dropped or wrong. Do not rely on it to keep anyone safe.
 
@@ -33,7 +33,7 @@ Replies mention the sender as `@[name]`. Each sender is limited to one command e
 
 1. Download the wheel from the [releases page](../../releases), or build it (see Development).
 2. Upload it on the Repeater dashboard's plugin page and enable it.
-3. Open `http://<repeater>:8000/plugins/nws-wx/` while logged in to the dashboard.
+3. Open `http://<repeater>:8000/plugins/stormhop/` while logged in to the dashboard.
 4. Enter your email, set the frame server host and port (default `127.0.0.1:5000`), pick states and counties, then **Save and restart**.
 5. Click **Save and send test alert** and confirm the message arrives on the alerts channel.
 
@@ -80,14 +80,14 @@ python3 -m venv .venv
 .venv/bin/pip install build && .venv/bin/python -m build --wheel
 ```
 
-Layout: `src/nws_wx/` holds the plugin (`frames.py` is the frame client, `alerts.py` the poller and relay, `weather.py` forecasts, `bot.py` commands, `main.py` the supervisor), `ui/` is the config page, and `PROTOCOL.md` records the frame protocol as verified against `openhop_core`.
+Layout: `src/stormhop/` holds the plugin (`frames.py` is the frame client, `alerts.py` the poller and relay, `weather.py` forecasts, `bot.py` commands, `main.py` the supervisor), `ui/` is the config page, and `PROTOCOL.md` records the frame protocol as verified against `openhop_core`.
 
 Bundled data is generated, not hand-edited:
 
 - `scripts/build_ui_data.py` makes `ui/data.js` (states, counties, event types) from the Census county list and `https://api.weather.gov/alerts/types`.
-- `scripts/build_zip_data.py` makes `src/nws_wx/zipdata.json` from the Census 2020 ZCTA gazetteer.
+- `scripts/build_zip_data.py` makes `src/stormhop/zipdata.json` from the Census 2020 ZCTA gazetteer.
 
-Each script's docstring has the download URLs. When you change the version, update it in `pyproject.toml`, `openhop-plugin.json` and `src/nws_wx/__init__.py`, which must all match.
+Each script's docstring has the download URLs. When you change the version, update it in `pyproject.toml`, `openhop-plugin.json` and `src/stormhop/__init__.py`, which must all match.
 
 ## Data sources
 

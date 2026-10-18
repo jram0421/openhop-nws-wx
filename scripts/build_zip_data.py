@@ -1,6 +1,6 @@
-"""Generate src/nws_wx/zipdata.json from the Census ZCTA gazetteer (public domain).
+"""Generate src/stormhop/zipdata.json from the Census ZCTA gazetteer (public domain).
 
-Usage: build_zip_data.py 2020_Gaz_zcta_national.txt src/nws_wx/zipdata.json
+Usage: build_zip_data.py 2020_Gaz_zcta_national.txt src/stormhop/zipdata.json
   Source: https://www2.census.gov/geo/docs/maps-data/data/gazetteer/2020_Gazetteer/2020_Gaz_zcta_national.zip
 """
 

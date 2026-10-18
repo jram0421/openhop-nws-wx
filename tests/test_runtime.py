@@ -4,7 +4,7 @@ import struct
 
 import pytest
 
-from nws_wx import config, frames, main
+from stormhop import config, frames, main
 from tests.test_bot import contact_frame
 
 
@@ -18,7 +18,7 @@ def test_config_valid_and_user_agent():
     cfg = config.parse_config({"contact_email": "me@example.com", "states": ["tx", "ok"],
                                "counties": ["048113"], "zones": ["txz104"]})
     assert cfg.states == ["OK", "TX"] and cfg.zones == ["TXZ104"]
-    assert cfg.user_agent == "openhop-nws-wx/0.1.13 (me@example.com)"
+    assert cfg.user_agent == "openhop-stormhop/0.2.0 (me@example.com)"
 
 
 @pytest.mark.parametrize("bad", ["", "nope", "a@b", "a b@c.com", "a@b.com, c@d.com"])

@@ -2,7 +2,7 @@
   "use strict";
   var DATA = window.NWS_DATA;
   var match = location.pathname.match(/\/plugins\/([^/]+)\//);
-  var PLUGIN_ID = match ? decodeURIComponent(match[1]) : "nws-wx";
+  var PLUGIN_ID = match ? decodeURIComponent(match[1]) : "stormhop";
   var SETTINGS_URL = "/api/plugins/settings";
   // The dashboard keeps its login JWT here; this page shares its origin. The token is only
   // ever sent back to the same-origin settings API and is never stored or displayed.

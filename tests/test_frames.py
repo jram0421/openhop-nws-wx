@@ -2,7 +2,7 @@ import struct
 
 import pytest
 
-from nws_wx import frames
+from stormhop import frames
 
 
 def test_encode_frame_header():

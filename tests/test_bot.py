@@ -3,7 +3,7 @@ import struct
 
 import httpx
 
-from nws_wx import alerts, bot, contacts, weather
+from stormhop import alerts, bot, contacts, weather
 
 
 def contact_frame(name: str, lat: float, lon: float) -> bytes:
@@ -174,14 +174,14 @@ def test_compose_adds_whole_periods_only():
 
 
 def test_message_budget_accounts_for_node_name():
-    from nws_wx import main
+    from stormhop import main
     assert main.message_budget("Base") == 154
     assert main.message_budget("") == 130
     assert main.message_budget("x" * 200) == 60
 
 
 def test_parse_self_name():
-    from nws_wx import frames
+    from stormhop import frames
     payload = bytes([5]) + bytes(57) + b"Hilltop\x00"
     assert frames.parse_self_name(payload) == "Hilltop"
     assert frames.parse_self_name(bytes([5]) + bytes(10)) == ""
@@ -279,7 +279,7 @@ def test_followup_overflow_counts_the_rest():
 
 
 def test_followup_config_flag():
-    from nws_wx import config
+    from stormhop import config
     assert config.parse_config({"contact_email": "a@b.co", "states": ["TX"]}).wx_alerts_followup is True
     cfg = config.parse_config({"contact_email": "a@b.co", "states": ["TX"], "wx_alerts_followup": False})
     assert cfg.wx_alerts_followup is False

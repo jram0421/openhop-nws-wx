@@ -18,7 +18,7 @@ from .config import Config, ConfigError, load_config
 from .frames import FrameClient
 from .weather import WeatherClient, truncate
 
-log = logging.getLogger("nws_wx")
+log = logging.getLogger("stormhop")
 
 MAX_BACKOFF_S = 60
 CONTACTS_TTL_S = 60
@@ -105,7 +105,7 @@ async def send_test_if_requested(client: FrameClient, cfg: Config, channels: dic
     if idx is None:
         ok, detail = False, f"channel '{cfg.alerts_channel}' not found (have: {', '.join(sorted(channels))})"
     else:
-        text = truncate(f"NWS Weather test message (v{__version__}): the relay can post here. Ignore.", budget)
+        text = truncate(f"Stormhop test message (v{__version__}): the relay can post here. Ignore.", budget)
         ok = await client.send_channel(idx, text)
         detail = "sent" if ok else "the companion rejected the message"
     update_state(state_path, test_done=cfg.test_request)

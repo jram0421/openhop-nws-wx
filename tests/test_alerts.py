@@ -2,7 +2,7 @@ import asyncio
 
 import httpx
 
-from nws_wx import alerts
+from stormhop import alerts
 
 DOC = {
     "features": [
@@ -153,7 +153,7 @@ def test_normal_alerts_proceed_when_urgent_budget_is_spent():
 
 
 def test_urgent_cap_config():
-    from nws_wx import config
+    from stormhop import config
     base = {"contact_email": "a@b.co", "states": ["TX"]}
     assert config.parse_config(base).urgent_hourly_cap == 30
     assert config.parse_config({**base, "urgent_hourly_cap": 50}).urgent_hourly_cap == 50

@@ -62,7 +62,7 @@ class Config:
 
     @property
     def user_agent(self) -> str:
-        return f"openhop-nws-wx/{__version__} ({self.contact_email})"
+        return f"openhop-stormhop/{__version__} ({self.contact_email})"
 
 
 def _int(raw: dict, key: str, lo: int, hi: int, errors: list[str]) -> int:
