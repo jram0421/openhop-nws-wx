@@ -5,6 +5,8 @@ import struct
 import time
 from dataclasses import dataclass
 
+from .contacts import Contact, parse_contact
+
 OUT = 0x3C  # client -> server
 IN = 0x3E  # server -> client
 MAX_FRAME_SIZE = 176
@@ -12,12 +14,14 @@ CHANNEL_NAME_SIZE = 32
 
 CMD_APP_START = 1
 CMD_SEND_CHANNEL_TXT_MSG = 3
+CMD_GET_CONTACTS = 4
 CMD_SYNC_NEXT_MESSAGE = 10
 CMD_DEVICE_QUERY = 22
 CMD_GET_CHANNEL = 31
 
 RESP_OK = 0
 RESP_ERR = 1
+RESP_END_OF_CONTACTS = 4
 RESP_NO_MORE_MESSAGES = 10
 RESP_DEVICE_INFO = 13
 RESP_CHANNEL_MSG_RECV = 8
@@ -134,6 +138,26 @@ class FrameClient:
             self._writer.write(encode_frame(payload))
             await self._writer.drain()
             return await asyncio.wait_for(self._replies.get(), timeout)
+
+    async def request_many(self, payload: bytes, end_code: int, timeout: float = 10.0) -> list[bytes]:
+        """Collect reply frames until end_code arrives."""
+        async with self._lock:
+            while not self._replies.empty():
+                self._replies.get_nowait()
+            self._writer.write(encode_frame(payload))
+            await self._writer.drain()
+            frames: list[bytes] = []
+            while True:
+                reply = await asyncio.wait_for(self._replies.get(), timeout)
+                if reply[0] == end_code:
+                    return frames
+                if reply[0] == RESP_ERR:
+                    raise FrameError(f"error reply {reply[1:2].hex()}")
+                frames.append(reply)
+
+    async def contacts(self) -> list[Contact]:
+        frames = await self.request_many(bytes([CMD_GET_CONTACTS]), RESP_END_OF_CONTACTS)
+        return [c for c in map(parse_contact, frames) if c]
 
     async def start(self) -> int:
         """App start + device query. Returns max channels."""
