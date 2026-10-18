@@ -9,6 +9,7 @@ import httpx
 
 NWS_BASE = "https://api.weather.gov"
 SEVERITY_ORDER = ["Unknown", "Minor", "Moderate", "Severe", "Extreme"]
+URGENT_RANK = SEVERITY_ORDER.index("Severe")  # this severity and above ignore the cooldown
 MAX_TEXT_BYTES = 160  # frame payload cap is 176, minus 6 header bytes
 
 
@@ -117,16 +118,22 @@ class AlertRelay:
         self._sent_at: deque[float] = deque()
 
     def select(self, alerts: list[Alert]) -> list[Alert]:
-        """Alerts to post now, most severe first. Call mark_sent() per success."""
+        """Alerts to post now, most severe first. Call mark_sent() per success.
+
+        Severe and Extreme alerts skip the cooldown. Anything else waits out the cooldown and goes
+        one at a time. The hourly cap applies to everything.
+        """
         now = self._clock()
         while self._sent_at and now - self._sent_at[0] >= 3600:
             self._sent_at.popleft()
-        if self._sent_at and now - self._sent_at[-1] < self.cooldown_s:
-            return []
+        in_cooldown = bool(self._sent_at) and now - self._sent_at[-1] < self.cooldown_s
         fresh = [a for a in alerts if a.id not in self._seen and self.filter.matches(a)]
         fresh.sort(key=lambda a: -_sev(a.severity))
         room = max(0, self.hourly_cap - len(self._sent_at))
-        return fresh[: min(room, 1)]  # one per cooldown window
+        urgent = [a for a in fresh if _sev(a.severity) >= URGENT_RANK]
+        if urgent:
+            return urgent[:room]
+        return [] if in_cooldown else fresh[: min(room, 1)]
 
     def mark_sent(self, alert: Alert) -> None:
         self._seen.add(alert.id)

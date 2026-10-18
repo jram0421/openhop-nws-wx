@@ -189,7 +189,9 @@ async def alert_loop(client: FrameClient, http: httpx.AsyncClient, cfg: Config, 
             continue
         deadline = time.monotonic() + cfg.poll_seconds
         while time.monotonic() < deadline:
-            for a in relay.select(current):
+            for n, a in enumerate(relay.select(current)):
+                if n:
+                    await asyncio.sleep(REPLY_GAP_S)
                 if await client.send_channel(alerts_idx, alert_mod.format_alert(a, budget)):
                     relay.mark_sent(a)
                     save_seen(seen_path, relay.seen)

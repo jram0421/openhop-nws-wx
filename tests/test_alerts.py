@@ -85,3 +85,40 @@ def test_format_truncates_to_byte_limit():
 def test_format_includes_end_time():
     a1 = alerts.parse_alerts(DOC)[0]
     assert alerts.format_alert(a1).startswith("NWS Tornado Warning (Extreme): Dallas, TX until 5:30PM")
+
+
+def _mk(aid, severity):
+    return alerts.Alert(aid, "Event " + aid, severity, "Area", "h", None, frozenset(), frozenset())
+
+
+def test_severe_and_extreme_skip_the_cooldown():
+    t = [0.0]
+    relay = alerts.AlertRelay(alerts.AlertFilter(min_severity="Minor"), cooldown_s=300, hourly_cap=10, clock=lambda: t[0])
+    relay.mark_sent(_mk("first", "Moderate"))
+    t[0] = 5  # deep in the cooldown
+    pending = [_mk("m", "Moderate"), _mk("s", "Severe"), _mk("e", "Extreme")]
+    assert [a.id for a in relay.select(pending)] == ["e", "s"]  # urgent only, most severe first
+    for a in relay.select(pending):
+        relay.mark_sent(a)
+    assert relay.select(pending) == []  # the Moderate one still waits
+    t[0] = 400
+    assert [a.id for a in relay.select(pending)] == ["m"]
+
+
+def test_cooldown_still_applies_below_severe():
+    t = [0.0]
+    relay = alerts.AlertRelay(alerts.AlertFilter(min_severity="Minor"), cooldown_s=60, hourly_cap=10, clock=lambda: t[0])
+    relay.mark_sent(_mk("a", "Moderate"))
+    t[0] = 10
+    assert relay.select([_mk("b", "Moderate"), _mk("c", "Minor")]) == []
+
+
+def test_hourly_cap_still_limits_urgent_alerts():
+    t = [0.0]
+    relay = alerts.AlertRelay(alerts.AlertFilter(min_severity="Minor"), cooldown_s=300, hourly_cap=2, clock=lambda: t[0])
+    relay.mark_sent(_mk("x", "Minor"))
+    batch = [_mk("e1", "Extreme"), _mk("e2", "Extreme"), _mk("e3", "Extreme")]
+    got = relay.select(batch)
+    assert [a.id for a in got] == ["e1"]  # one slot left this hour
+    relay.mark_sent(got[0])
+    assert relay.select(batch[1:]) == []

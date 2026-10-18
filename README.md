@@ -6,7 +6,7 @@ An [OpenHop](https://docs.openhop.dev/) Repeater plugin that relays National Wea
 
 ## What it does
 
-**Alert relay.** Polls `api.weather.gov/alerts/active` for your states, keeps alerts that cover your counties (SAME codes) or zones, and posts them to an alerts channel. It deduplicates by alert ID, filters by severity and event type, and enforces a cooldown and an hourly cap.
+**Alert relay.** Polls `api.weather.gov/alerts/active` for your states, keeps alerts that cover your counties (SAME codes) or zones, and posts them to an alerts channel. It deduplicates by alert ID, filters by severity and event type, and enforces a cooldown and an hourly cap. Severe and Extreme alerts are never held back by the cooldown, though the hourly cap still applies to them.
 
 **Weather bot.** Listens on a bot channel for these commands (case does not matter):
 
@@ -52,7 +52,7 @@ The config page edits the plugin's `config.json`. Fields:
 | `min_severity` | `Moderate` | `Minor`, `Moderate`, `Severe` or `Extreme` |
 | `events` | none | Event names to allow. Empty means all |
 | `poll_seconds` | `120` | 60 to 3600 |
-| `alert_cooldown_seconds` | `60` | Minimum gap between posted alerts |
+| `alert_cooldown_seconds` | `60` | Minimum gap between posted alerts. Severe and Extreme alerts skip it |
 | `alert_hourly_cap` | `10` | Most alerts posted per hour |
 
 **How the page saves.** Plugin pages are not given the dashboard login by the Repeater, so the page reads the dashboard's own session token from the browser (`pymc_jwt_token` in `localStorage`, same origin) and uses it for the settings API. If you are logged out or the session expired, it says so and shows the JSON to paste into the dashboard's plugin Config dialog instead. The settings API replaces the whole config object, and the page keeps keys it does not know about.
