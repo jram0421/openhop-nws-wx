@@ -13,5 +13,6 @@
   "events": [],
   "poll_seconds": 120,
   "alert_cooldown_seconds": 60,
-  "alert_hourly_cap": 10
+  "alert_hourly_cap": 10,
+  "test_request": 0
 }

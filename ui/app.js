@@ -197,12 +197,8 @@
       });
   }
 
-  function save() {
-    var cfg = collect();
-    if (!cfg) { if (!$("status").textContent) setStatus("Fix the highlighted fields.", false); return; }
-    setStatus("Saving…");
-    $("save").disabled = true;
-    fetch(SETTINGS_URL, {
+  function postConfig(cfg) {
+    return fetch(SETTINGS_URL, {
       method: "POST", credentials: "same-origin",
       headers: authHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ id: PLUGIN_ID, restart: true, config: cfg })
@@ -210,11 +206,52 @@
       if (!r.ok) throw { status: r.status };
       loaded = cfg;
       $("fallback").hidden = true;
+    });
+  }
+
+  function failed(cfg, e) {
+    showManual(cfg);
+    setStatus(e && e.status ? authHint(e.status, "Save") : "Could not reach the settings API.", false);
+  }
+
+  function save() {
+    var cfg = collect();
+    if (!cfg) { if (!$("status").textContent) setStatus("Fix the highlighted fields.", false); return; }
+    setStatus("Saving…");
+    busy(true);
+    postConfig(cfg).then(function () {
       setStatus("Saved. The plugin is restarting with the new settings.", true);
-    }).catch(function (e) {
-      showManual(cfg);
-      setStatus(e && e.status ? authHint(e.status, "Save") : "Could not reach the settings API.", false);
-    }).then(function () { $("save").disabled = false; });
+    }).catch(function (e) { failed(cfg, e); }).then(function () { busy(false); });
+  }
+
+  function busy(on) { $("save").disabled = $("test").disabled = on; }
+
+  // The plugin has no port of its own, so the request travels in the config: a new test_request
+  // number makes the plugin post one test message after its restart, then report in runtime.json.
+  function pollTest(nonce, tries) {
+    return fetch("/api/plugins/runtime?id=" + encodeURIComponent(PLUGIN_ID), { credentials: "same-origin", headers: authHeaders() })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .catch(function () { return null; })
+      .then(function (body) {
+        var t = body && body.runtime && body.runtime.last_test;
+        if (t && t.request === nonce) return t;
+        if (tries <= 0) return null;
+        return new Promise(function (res) { setTimeout(res, 2000); }).then(function () { return pollTest(nonce, tries - 1); });
+      });
+  }
+
+  function sendTest() {
+    var cfg = collect();
+    if (!cfg) { if (!$("status").textContent) setStatus("Fix the highlighted fields.", false); return; }
+    var nonce = Math.floor(Date.now() / 1000);
+    cfg.test_request = nonce;
+    setStatus("Saving and waiting for the plugin to restart…");
+    busy(true);
+    postConfig(cfg).then(function () { return pollTest(nonce, 15); }).then(function (t) {
+      if (!t) setStatus("Saved, but no result from the plugin yet. Check its status and logs.", false);
+      else if (t.ok) setStatus("Test message sent to " + cfg.alerts_channel + ". Check that it arrived.", true);
+      else setStatus("Test failed: " + t.detail, false);
+    }).catch(function (e) { failed(cfg, e); }).then(function () { busy(false); });
   }
 
   $("state_filter").addEventListener("input", renderStates);
@@ -227,6 +264,7 @@
     shownCounties.forEach(function (c) { sel.counties.delete(c); }); renderCounties();
   });
   $("save").addEventListener("click", save);
+  $("test").addEventListener("click", sendTest);
   $("reload").addEventListener("click", load);
   $("copy").addEventListener("click", function () {
     var cfg = collect();

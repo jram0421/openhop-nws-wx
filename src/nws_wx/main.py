@@ -12,10 +12,11 @@ from pathlib import Path
 import httpx
 
 from . import alerts as alert_mod
+from . import __version__
 from .bot import Bot
 from .config import Config, ConfigError, load_config
 from .frames import FrameClient
-from .weather import WeatherClient
+from .weather import WeatherClient, truncate
 
 log = logging.getLogger("nws_wx")
 
@@ -48,10 +49,40 @@ def load_seen(path: Path) -> set[str]:
         return set()
 
 
-def save_seen(path: Path, seen: set[str]) -> None:
+def read_state(path: Path) -> dict:
+    try:
+        state = json.loads(path.read_text("utf-8"))
+        return state if isinstance(state, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def update_state(path: Path, **fields) -> None:
     tmp = path.with_name(".state.json.tmp")
-    tmp.write_text(json.dumps({"seen": sorted(seen)[-SEEN_CAP:]}), "utf-8")
+    tmp.write_text(json.dumps({**read_state(path), **fields}), "utf-8")
     tmp.replace(path)
+
+
+def save_seen(path: Path, seen: set[str]) -> None:
+    update_state(path, seen=sorted(seen)[-SEEN_CAP:])
+
+
+async def send_test_if_requested(client: FrameClient, cfg: Config, channels: dict[str, int], data_dir: Path,
+                                 status: Status, budget: int) -> None:
+    """The config page asks for a test by saving a new test_request number; handle each number once."""
+    state_path = data_dir / "state.json"
+    if not cfg.test_request or read_state(state_path).get("test_done") == cfg.test_request:
+        return
+    idx = find_channel(channels, cfg.alerts_channel)
+    if idx is None:
+        ok, detail = False, f"channel '{cfg.alerts_channel}' not found (have: {', '.join(sorted(channels))})"
+    else:
+        text = truncate(f"NWS Weather test message (v{__version__}): the relay can post here. Ignore.", budget)
+        ok = await client.send_channel(idx, text)
+        detail = "sent" if ok else "the companion rejected the message"
+    update_state(state_path, test_done=cfg.test_request)
+    status.update(last_test={"request": cfg.test_request, "ok": ok, "detail": detail, "at": int(time.time())})
+    log.info("test message: %s", detail)
 
 
 async def config_changed(path: Path, baseline: bytes) -> None:
@@ -154,6 +185,7 @@ async def run_session(cfg: Config, data_dir: Path, status: Status, seen: set[str
         status.update(state="running", connected=True, channels=sorted(channels), warnings=problems)
         for p in problems:
             log.warning(p)
+        await send_test_if_requested(client, cfg, channels, data_dir, status, budget)
 
         async with httpx.AsyncClient(headers={"User-Agent": cfg.user_agent}, timeout=15.0,
                                      follow_redirects=True) as http:

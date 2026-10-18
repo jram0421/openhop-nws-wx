@@ -2,7 +2,7 @@
   "schema": 1,
   "id": "nws-wx",
   "name": "NWS Weather",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Relays NWS alerts and answers wx requests on mesh channels. A convenience relay, not a replacement for NOAA Weather Radio or Wireless Emergency Alerts.",
   "runtime": {
     "type": "python",

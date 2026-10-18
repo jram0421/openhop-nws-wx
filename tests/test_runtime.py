@@ -18,7 +18,7 @@ def test_config_valid_and_user_agent():
     cfg = config.parse_config({"contact_email": "me@example.com", "states": ["tx", "ok"],
                                "counties": ["048113"], "zones": ["txz104"]})
     assert cfg.states == ["OK", "TX"] and cfg.zones == ["TXZ104"]
-    assert cfg.user_agent == "openhop-nws-wx/0.1.4 (me@example.com)"
+    assert cfg.user_agent == "openhop-nws-wx/0.1.5 (me@example.com)"
 
 
 @pytest.mark.parametrize("bad", ["", "nope", "a@b", "a b@c.com", "a@b.com, c@d.com"])
@@ -166,3 +166,45 @@ def test_close_reason_reports_server_hangup():
         server.close()
 
     asyncio.run(asyncio.wait_for(run(), 10))
+
+
+def test_test_request_posts_once_and_reports(tmp_path):
+    async def run():
+        fake = FakeFrameServer()
+        server = await asyncio.start_server(fake.handle, "127.0.0.1", 0)
+        client = frames.FrameClient("127.0.0.1", server.sockets[0].getsockname()[1])
+        await client.connect()
+        channels = await client.channels(await client.start())
+        status = main.Status(tmp_path)
+        cfg = config.parse_config({"contact_email": "me@example.com", "states": ["TX"], "test_request": 111})
+
+        await main.send_test_if_requested(client, cfg, channels, tmp_path, status, 154)
+        assert len(fake.sent) == 1 and fake.sent[0][2] == 2  # alerts channel index
+        assert b"test message" in fake.sent[0]
+        last = json.loads((tmp_path / "runtime.json").read_text())["last_test"]
+        assert last["request"] == 111 and last["ok"] is True
+
+        await main.send_test_if_requested(client, cfg, channels, tmp_path, status, 154)
+        assert len(fake.sent) == 1  # same request number is not handled twice
+
+        cfg2 = config.parse_config({"contact_email": "me@example.com", "states": ["TX"], "test_request": 112,
+                                    "alerts_channel": "Nope"})
+        await main.send_test_if_requested(client, cfg2, channels, tmp_path, status, 154)
+        last = json.loads((tmp_path / "runtime.json").read_text())["last_test"]
+        assert last["ok"] is False and "not found" in last["detail"] and len(fake.sent) == 1
+
+        none = config.parse_config({"contact_email": "me@example.com", "states": ["TX"]})
+        await main.send_test_if_requested(client, none, channels, tmp_path, status, 154)
+        assert len(fake.sent) == 1  # no request, no message
+        await client.close()
+        server.close()
+
+    asyncio.run(asyncio.wait_for(run(), 10))
+
+
+def test_state_file_keeps_seen_and_test_done(tmp_path):
+    path = tmp_path / "state.json"
+    main.save_seen(path, {"a"})
+    main.update_state(path, test_done=5)
+    main.save_seen(path, {"a", "b"})
+    assert main.read_state(path) == {"seen": ["a", "b"], "test_done": 5}
