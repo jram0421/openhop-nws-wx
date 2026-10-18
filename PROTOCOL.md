@@ -35,7 +35,7 @@ No lookup-by-name command. Enumerate indexes 0..max_channels-1 with `CMD_GET_CHA
 
 ## Plugin settings API
 - `GET /api/plugins/settings?id=` and `POST /api/plugins/settings` (`{id, restart, config}`, full replace, 256 KiB cap).
-- Auth: `X-API-Key` (admin-equivalent) or `Authorization: Bearer` JWT. Docs do not say a plugin page may use the dashboard session. Needs testing on a live Repeater; never embed an API key in the UI.
+- Auth: `X-API-Key` (admin-equivalent) or `Authorization: Bearer` JWT. Docs do not say a plugin page may use the dashboard session. **Tested 2026-10-18 on a live Repeater: a plugin page's same-origin request is rejected with 401 (`Valid JWT or API token required`), so the UI cannot save with the dashboard session.** The UI falls back to showing the JSON to paste into the dashboard's plugin Config dialog. Never embed an API key in the UI.
 
 ## Contacts (sender location)
 `CMD_GET_CONTACTS` (4) replies `CONTACTS_START` (2, u32 count), N x `RESP_CODE_CONTACT` (3), then `END_OF_CONTACTS` (4).
