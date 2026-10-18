@@ -4,6 +4,9 @@
   var match = location.pathname.match(/\/plugins\/([^/]+)\//);
   var PLUGIN_ID = match ? decodeURIComponent(match[1]) : "nws-wx";
   var SETTINGS_URL = "/api/plugins/settings";
+  // The dashboard keeps its login JWT here; this page shares its origin. The token is only
+  // ever sent back to the same-origin settings API and is never stored or displayed.
+  var TOKEN_KEY = "pymc_jwt_token";
   var EMAIL_RE = /^[^@\s,;()<>]+@[^@\s,;()<>]+\.[^@\s,;()<>]+$/;
   var ZONE_RE = /^[A-Z]{2}[CZ]\d{3}$/;
 
@@ -155,15 +158,30 @@
     $("fallback").hidden = false;
   }
 
-  function authHint(status) {
-    return status === 401 || status === 403
-      ? "The dashboard rejected this page's request (" + status + "): plugin pages are not given the dashboard login. Use the manual JSON below."
-      : "Save failed (" + status + ").";
+  function dashboardToken() {
+    try { return localStorage.getItem(TOKEN_KEY) || ""; } catch (e) { return ""; }
+  }
+
+  function authHeaders(extra) {
+    var h = Object.assign({}, extra);
+    var t = dashboardToken();
+    if (t) h.Authorization = "Bearer " + t;
+    return h;
+  }
+
+  function authHint(status, action) {
+    if (status === 401 || status === 403) {
+      return (dashboardToken()
+        ? "Your dashboard session was rejected (" + status + "); it may have expired."
+        : "No dashboard login found in this browser.") +
+        " Log in to the dashboard, reload this page, and try again, or use the manual JSON below.";
+    }
+    return action + " failed (" + status + ").";
   }
 
   function load() {
     setStatus("Loading…");
-    return fetch(SETTINGS_URL + "?id=" + encodeURIComponent(PLUGIN_ID), { credentials: "same-origin" })
+    return fetch(SETTINGS_URL + "?id=" + encodeURIComponent(PLUGIN_ID), { credentials: "same-origin", headers: authHeaders() })
       .then(function (r) {
         if (!r.ok) throw { status: r.status };
         return r.json();
@@ -174,7 +192,7 @@
       })
       .catch(function (e) {
         fill({});
-        setStatus(e && e.status ? authHint(e.status).replace("Save failed", "Could not load settings") :
+        setStatus(e && e.status ? authHint(e.status, "Loading settings") :
           "Could not reach the settings API; showing defaults.", false);
       });
   }
@@ -186,7 +204,7 @@
     $("save").disabled = true;
     fetch(SETTINGS_URL, {
       method: "POST", credentials: "same-origin",
-      headers: { "Content-Type": "application/json" },
+      headers: authHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ id: PLUGIN_ID, restart: true, config: cfg })
     }).then(function (r) {
       if (!r.ok) throw { status: r.status };
@@ -195,7 +213,7 @@
       setStatus("Saved. The plugin is restarting with the new settings.", true);
     }).catch(function (e) {
       showManual(cfg);
-      setStatus(e && e.status ? authHint(e.status) : "Could not reach the settings API.", false);
+      setStatus(e && e.status ? authHint(e.status, "Save") : "Could not reach the settings API.", false);
     }).then(function () { $("save").disabled = false; });
   }
 
