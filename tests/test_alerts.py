@@ -1,0 +1,87 @@
+import asyncio
+
+import httpx
+
+from nws_wx import alerts
+
+DOC = {
+    "features": [
+        {"properties": {"id": "a1", "event": "Tornado Warning", "severity": "Extreme",
+                        "areaDesc": "Dallas, TX", "ends": "2026-06-01T17:30:00-05:00",
+                        "geocode": {"SAME": ["048113"], "UGC": ["TXC113"]}}},
+        {"properties": {"id": "a2", "event": "Wind Advisory", "severity": "Minor",
+                        "areaDesc": "Travis, TX",
+                        "geocode": {"SAME": ["048453"], "UGC": ["TXZ192"]}}},
+        {"properties": {"id": "a3", "event": "Flood Watch", "severity": "Moderate",
+                        "areaDesc": "Harris, TX",
+                        "geocode": {"SAME": ["048201"], "UGC": ["TXZ213"]}}},
+        {"properties": {"event": "No id"}},
+    ]
+}
+
+
+def test_parse_skips_bad_features():
+    assert [a.id for a in alerts.parse_alerts(DOC)] == ["a1", "a2", "a3"]
+
+
+def test_fetch_sends_user_agent_and_area():
+    seen = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["ua"] = request.headers["user-agent"]
+        seen["area"] = request.url.params["area"]
+        return httpx.Response(200, json=DOC)
+
+    async def run():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler),
+                                     headers={"User-Agent": "test-ua"}) as c:
+            return await alerts.fetch_active(c, ["TX", "OK"])
+
+    assert len(asyncio.run(run())) == 3
+    assert seen == {"ua": "test-ua", "area": "OK,TX"}
+
+
+def test_filter_same_severity_and_event():
+    a1, a2, a3 = alerts.parse_alerts(DOC)
+    flt = alerts.AlertFilter(same_codes={"048113", "048453"}, min_severity="Moderate")
+    assert flt.matches(a1) and not flt.matches(a2) and not flt.matches(a3)
+    flt.events = {"Flood Watch"}
+    assert not flt.matches(a1)
+
+
+def test_filter_matches_zone_codes():
+    a2 = alerts.parse_alerts(DOC)[1]
+    flt = alerts.AlertFilter(zones={"TXZ192"}, min_severity="Minor")
+    assert flt.matches(a2)
+
+
+def test_relay_cooldown_cap_and_dedupe():
+    t = [0.0]
+    flt = alerts.AlertFilter(min_severity="Minor")
+    relay = alerts.AlertRelay(flt, cooldown_s=60, hourly_cap=2, clock=lambda: t[0])
+    parsed = alerts.parse_alerts(DOC)
+
+    first = relay.select(parsed)
+    assert [a.id for a in first] == ["a1"]  # most severe first
+    relay.mark_sent(first[0])
+    assert relay.select(parsed) == []  # cooldown
+
+    t[0] = 61
+    second = relay.select(parsed)
+    assert [a.id for a in second] == ["a3"]  # a1 deduped
+    relay.mark_sent(second[0])
+
+    t[0] = 200
+    assert relay.select(parsed) == []  # hourly cap hit
+    t[0] = 3700
+    assert [a.id for a in relay.select(parsed)] == ["a2"]
+
+
+def test_format_truncates_to_byte_limit():
+    long = alerts.Alert("x", "Tornado Warning", "Extreme", "é" * 200, "h", None, frozenset(), frozenset())
+    assert len(alerts.format_alert(long).encode()) <= alerts.MAX_TEXT_BYTES
+
+
+def test_format_includes_end_time():
+    a1 = alerts.parse_alerts(DOC)[0]
+    assert alerts.format_alert(a1).startswith("NWS Tornado Warning (Extreme): Dallas, TX until 5:30PM")
