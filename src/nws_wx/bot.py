@@ -13,6 +13,10 @@ from .weather import WeatherClient, compose, truncate
 
 ZIP_RE = re.compile(r"^\d{5}$")
 UNAVAILABLE = "Weather service unavailable, try again later."
+USAGE = "Use: wx, wx <zip>, alerts, alerts <zip>, help"
+HELP_COMMANDS = "wx: forecast+alerts at your GPS | wx <zip> | alerts: our area | alerts <zip> | help"
+HELP_NOTE = "NWS data via a convenience relay. Not a replacement for NOAA Weather Radio or WEA."
+HELP_WORDS = ("help", "?")
 
 
 class RateLimiter:
@@ -66,10 +70,12 @@ class Bot:
             return []
         sender, body = parsed
         words = body.lower().split()
-        if not words or words[0] not in ("wx", "alerts") or len(words) > 2:
+        if not words or words[0] not in ("wx", "alerts", *HELP_WORDS) or len(words) > 2:
             return []
         if not self.limiter.allow(sender):
             return []  # stay quiet rather than add traffic
+        if words[0] in HELP_WORDS or (len(words) == 2 and words[1] in HELP_WORDS):
+            return self._help(sender)
         try:
             if words[0] == "alerts":
                 if len(words) == 2:
@@ -81,9 +87,12 @@ class Bot:
         except (httpx.HTTPError, KeyError, ValueError):
             return [f"@[{sender}] {UNAVAILABLE}"]
 
+    def _help(self, sender: str) -> list[str]:
+        return [truncate(f"@[{sender}] {HELP_COMMANDS}", self.max_bytes), truncate(HELP_NOTE, self.max_bytes)]
+
     async def _wx_zip(self, sender: str, zipcode: str) -> list[str]:
         if not ZIP_RE.match(zipcode):
-            return [f"@[{sender}] Use: wx, wx <zip>, alerts, or alerts <zip>"]
+            return [f"@[{sender}] {USAGE}"]
         coords = await self.weather.zip_to_latlon(zipcode)
         if not coords:
             return [f"@[{sender}] Unknown zip {zipcode}"]
@@ -91,7 +100,7 @@ class Bot:
 
     async def _alerts_zip(self, sender: str, zipcode: str) -> str:
         if not ZIP_RE.match(zipcode):
-            return f"@[{sender}] Use: wx, wx <zip>, alerts, or alerts <zip>"
+            return f"@[{sender}] {USAGE}"
         coords = await self.weather.zip_to_latlon(zipcode)
         if not coords:
             return f"@[{sender}] Unknown zip {zipcode}"

@@ -283,3 +283,27 @@ def test_followup_config_flag():
     assert config.parse_config({"contact_email": "a@b.co", "states": ["TX"]}).wx_alerts_followup is True
     cfg = config.parse_config({"contact_email": "a@b.co", "states": ["TX"], "wx_alerts_followup": False})
     assert cfg.wx_alerts_followup is False
+
+
+def test_help_variants_return_commands_and_disclaimer():
+    b, calls = make_bot([], limiter=bot.RateLimiter(min_gap_s=0))
+    for text in ("Bob: help", "Bob: HELP", "Bob: ?", "Bob: wx help", "Bob: alerts help"):
+        out = run(b.replies(text))
+        assert len(out) == 2, text
+        assert out[0].startswith("@[Bob] wx: forecast+alerts at your GPS | wx <zip>")
+        assert "NOAA Weather Radio" in out[1]
+    assert calls == []  # help never touches NWS
+
+
+def test_help_fits_small_budget_and_is_rate_limited():
+    b, _ = make_bot([])
+    b.max_bytes = 60
+    out = run(b.replies("indianaiot.com Bot: help"))
+    assert all(len(m.encode()) <= 60 for m in out)
+    assert run(b.replies("indianaiot.com Bot: help")) == []  # per-sender limiter applies
+
+
+def test_help_ignores_extra_words_and_bad_args_point_to_help():
+    b, _ = make_bot([], limiter=bot.RateLimiter(min_gap_s=0))
+    assert run(b.replies("Bob: help me please")) == []
+    assert run(b.handle("Bob: wx abc")).endswith("alerts <zip>, help")
