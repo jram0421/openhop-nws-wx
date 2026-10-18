@@ -6,7 +6,7 @@ from collections import defaultdict, deque
 
 import httpx
 
-from .alerts import Alert
+from .alerts import Alert, until
 from .contacts import Contact, resolve
 from .alerts import MAX_TEXT_BYTES
 from .weather import WeatherClient, compose, truncate
@@ -63,6 +63,8 @@ class Bot:
             return None  # stay quiet rather than add traffic
         try:
             if words[0] == "alerts":
+                if len(words) == 2:
+                    return await self._alerts_zip(sender, words[1])
                 return f"@{sender} " + self._alerts_text(self.get_alerts())
             if len(words) == 2:
                 return await self._wx_zip(sender, words[1])
@@ -72,11 +74,33 @@ class Bot:
 
     async def _wx_zip(self, sender: str, zipcode: str) -> str:
         if not ZIP_RE.match(zipcode):
-            return f"@{sender} Use: wx, wx <5-digit zip>, or alerts"
+            return f"@{sender} Use: wx, wx <zip>, alerts, or alerts <zip>"
         coords = await self.weather.zip_to_latlon(zipcode)
         if not coords:
             return f"@{sender} Unknown zip {zipcode}"
         return await self._forecast_reply(sender, *coords)
+
+    async def _alerts_zip(self, sender: str, zipcode: str) -> str:
+        if not ZIP_RE.match(zipcode):
+            return f"@{sender} Use: wx, wx <zip>, alerts, or alerts <zip>"
+        coords = await self.weather.zip_to_latlon(zipcode)
+        if not coords:
+            return f"@{sender} Unknown zip {zipcode}"
+        found = await self.weather.alerts_at(*coords)
+        prefix = f"@{sender} {zipcode}: "
+        if not found:
+            return f"{prefix}no active alerts."
+        items = [f"{a.event}{until(a)}" for a in found]
+        text = prefix + items[0]
+        shown = 1
+        for item in items[1:]:
+            candidate = f"{text}; {item}"
+            if len((candidate + f" +{len(items) - shown - 1} more").encode("utf-8")) > self.max_bytes:
+                break
+            text, shown = candidate, shown + 1
+        if shown < len(items):
+            text += f" +{len(items) - shown} more"
+        return truncate(text, self.max_bytes)
 
     async def _wx_here(self, sender: str) -> str:
         contacts: list[Contact] = await self.get_contacts()

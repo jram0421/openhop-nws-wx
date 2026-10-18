@@ -82,15 +82,18 @@ async def fetch_active(client: httpx.AsyncClient, states: list[str]) -> list[Ale
     return parse_alerts(resp.json())
 
 
+def until(alert: Alert) -> str:
+    """' until 5:30PM Sat' or '' when the end time is missing or unreadable."""
+    if not alert.ends:
+        return ""
+    try:
+        return f" until {datetime.fromisoformat(alert.ends).strftime('%-I:%M%p %a')}"
+    except ValueError:
+        return ""
+
+
 def format_alert(alert: Alert, limit: int = MAX_TEXT_BYTES) -> str:
-    until = ""
-    if alert.ends:
-        try:
-            dt = datetime.fromisoformat(alert.ends)
-            until = f" until {dt.strftime('%-I:%M%p %a')}"
-        except ValueError:
-            pass
-    text = f"NWS {alert.event} ({alert.severity}): {alert.area}{until}"
+    text = f"NWS {alert.event} ({alert.severity}): {alert.area}{until(alert)}"
     raw = text.encode("utf-8")
     if len(raw) > limit:
         text = raw[: limit - 3].decode("utf-8", "ignore") + "..."

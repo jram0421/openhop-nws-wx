@@ -21,6 +21,15 @@ PERIODS = [
 ]
 
 
+def _alert(aid, event, sev, ends="2026-06-01T17:30:00-05:00"):
+    return {"properties": {"id": aid, "event": event, "severity": sev, "areaDesc": "Dallas, TX",
+                           "ends": ends, "geocode": {"SAME": ["048113"], "UGC": ["TXC113"]}}}
+
+
+POINT_ALERTS = {"features": [_alert("1", "Wind Advisory", "Minor"), _alert("2", "Tornado Warning", "Extreme"),
+                             _alert("3", "Flood Watch", "Moderate", None)]}
+
+
 def make_http(calls: list):
     def handler(request: httpx.Request) -> httpx.Response:
         calls.append(str(request.url))
@@ -29,6 +38,10 @@ def make_http(calls: list):
             if url.path.endswith("00000"):
                 return httpx.Response(404)
             return httpx.Response(200, json={"places": [{"latitude": "32.78", "longitude": "-96.80"}]})
+        if url.path == "/alerts/active":
+            if url.params.get("point", "").startswith("32.78"):
+                return httpx.Response(200, json=POINT_ALERTS)
+            return httpx.Response(200, json={"features": []})
         if url.path.startswith("/points/"):
             if url.path.startswith("/points/51."):
                 return httpx.Response(404)
@@ -177,3 +190,32 @@ def test_parse_self_name():
     assert frames.parse_self_name(payload) == "Hilltop"
     assert frames.parse_self_name(bytes([5]) + bytes(10)) == ""
     assert frames.parse_self_name(bytes([5]) + bytes(57) + b"\x01\x02") == ""
+
+
+def test_alerts_zip_lists_all_severities_most_severe_first():
+    b, calls = make_bot([], limiter=bot.RateLimiter(min_gap_s=0))
+    reply = run(b.handle("Bob: alerts 75201"))
+    assert reply == ("@Bob 75201: Tornado Warning until 5:30PM Mon; Flood Watch; Wind Advisory until 5:30PM Mon")
+    assert any("alerts/active?point=32.7800%2C-96.8000" in c or "point=32.7800,-96.8000" in c for c in calls)
+
+
+def test_alerts_zip_none_unknown_and_invalid():
+    b, _ = make_bot([], limiter=bot.RateLimiter(min_gap_s=0))
+    b.weather._zips.put("11111", (40.0, -75.0))
+    assert run(b.handle("Bob: alerts 11111")) == "@Bob 11111: no active alerts."
+    assert "Unknown zip" in run(b.handle("Bob: alerts 00000"))
+    assert "Use:" in run(b.handle("Bob: alerts abc"))
+
+
+def test_alerts_zip_fits_budget_and_counts_the_rest():
+    b, _ = make_bot([], limiter=bot.RateLimiter(min_gap_s=0))
+    b.max_bytes = 70
+    reply = run(b.handle("Bob: alerts 75201"))
+    assert reply.startswith("@Bob 75201: Tornado Warning until 5:30PM Mon") and reply.endswith("more")
+    assert len(reply.encode()) <= 70
+
+
+def test_alerts_zip_cached():
+    b, calls = make_bot([], limiter=bot.RateLimiter(min_gap_s=0))
+    run(b.handle("Bob: alerts 75201")); run(b.handle("Ann: alerts 75201"))
+    assert sum("alerts/active" in c for c in calls) == 1

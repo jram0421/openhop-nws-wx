@@ -5,11 +5,12 @@ from dataclasses import dataclass
 
 import httpx
 
-from .alerts import MAX_TEXT_BYTES, NWS_BASE
+from .alerts import MAX_TEXT_BYTES, NWS_BASE, Alert, parse_alerts
 
 ZIP_URL = "https://api.zippopotam.us/us/{zip}"
 POINTS_TTL = 24 * 3600
 FORECAST_TTL = 15 * 60
+ALERTS_TTL = 5 * 60
 MAX_CACHE = 512
 
 
@@ -79,6 +80,7 @@ class WeatherClient:
         self._points = TTLCache(POINTS_TTL, clock)
         self._forecasts = TTLCache(FORECAST_TTL, clock)
         self._zips = TTLCache(POINTS_TTL, clock)
+        self._point_alerts = TTLCache(ALERTS_TTL, clock)
 
     async def zip_to_latlon(self, zipcode: str) -> tuple[float, float] | None:
         hit = self._zips.get(zipcode)
@@ -118,3 +120,21 @@ class WeatherClient:
         result = Forecast(place, forecast_parts(resp.json()["properties"]["periods"]))
         self._forecasts.put(key, result)
         return result
+
+    async def alerts_at(self, lat: float, lon: float) -> list[Alert]:
+        """Every active alert covering this point, most severe first."""
+        key = (round(lat, 2), round(lon, 2))
+        cached = self._point_alerts.get(key)
+        if cached is not None:
+            return cached
+        resp = await self._http.get(
+            f"{NWS_BASE}/alerts/active", params={"point": f"{lat:.4f},{lon:.4f}"},
+            headers={"Accept": "application/geo+json"},
+        )
+        if resp.status_code == 404:
+            return []
+        resp.raise_for_status()
+        order = ["Extreme", "Severe", "Moderate", "Minor"]
+        found = sorted(parse_alerts(resp.json()), key=lambda a: order.index(a.severity) if a.severity in order else 9)
+        self._point_alerts.put(key, found)
+        return found
